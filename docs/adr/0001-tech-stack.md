@@ -1,6 +1,6 @@
 # ADR 0001: Tech stack
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR 0002](0002-native-ui-and-linux-only.md)
 - **Date:** 2026-11-17
 
 ## Context

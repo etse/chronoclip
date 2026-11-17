@@ -22,8 +22,8 @@ body:
   - type: input
     id: system
     attributes:
-      label: OS, GPU and encoder
-      placeholder: Windows 11 24H2, RTX 4070, NVENC H.264
+      label: Distro, Wayland/X11, desktop, GPU and encoder
+      placeholder: "Arch Linux, KDE Plasma 6 (Wayland), RX 7800 XT, VAAPI H.264"
   - type: textarea
     id: logs
     attributes:

@@ -7,38 +7,54 @@
 - Continuous recording with **minimal impact on game FPS** (target: under 3% on a mid-range GPU with hardware encoding).
 - **Bounded** disk and memory usage for buffers from 5 to 45 minutes.
 - Saving a replay is **near-instant** and lossless (stream copy, no re-encode).
-- No interaction with the game process beyond what the OS capture APIs provide.
+- Works on **X11** (first; reference setup is Linux Mint Cinnamon + NVIDIA) and **Wayland** (later), on NVIDIA, AMD and Intel GPUs.
+- No interaction with the game process beyond what the desktop's capture APIs provide.
 
 ## Pipeline
 
 ```
-┌──────────────┐  GPU texture   ┌───────────────┐  encoded packets  ┌──────────────────┐
-│ Video capture │ ─────────────► │ Video encoder │ ────────────────► │                  │
-│ (WGC)         │  (bounded ch.) │ (NVENC/AMF/   │                   │  Segment writer  │
-└──────────────┘                └───────────────┘                   │  (2 s segments,  │
-┌──────────────┐  PCM frames    ┌───────────────┐                   │  MPEG-TS/fMP4)   │
-│ Audio capture │ ─────────────► │ Audio encoder │ ────────────────► │                  │
-│ (WASAPI)      │                │ (AAC/Opus)    │                   └────────┬─────────┘
-└──────────────┘                └───────────────┘                            │ writes
-                                                                             ▼
-                                                    temp dir: buffer/seg_000123.ts ...
-                                                    + in-memory SegmentIndex (ring)
-                                                                             │
-                     hotkey ──► SaveService: snapshot index ─► remux ─► Videos/Chronoclip/<ts>.mp4
+┌────────────────┐  DMA-BUF /     ┌───────────────┐  encoded packets  ┌──────────────────┐
+│ VideoSource    │  GL/CUDA tex.  │ Video encoder │ ────────────────► │                  │
+│ (X11, portal + │ ─────────────► │ (NVENC/VAAPI) │                   │  Segment writer  │
+│  PipeWire)     │  (bounded ch.) └───────────────┘                   │  (2 s segments)  │
+└────────────────┘                                                    │                  │
+┌────────────────┐  PCM frames    ┌───────────────┐                   │                  │
+│ AudioSource    │ ─────────────► │ Audio encoder │ ────────────────► │                  │
+│ (PipeWire)     │                │ (AAC/Opus)    │                   └────────┬─────────┘
+└────────────────┘                └───────────────┘                            │ writes
+                                                                               ▼
+                                         ~/.cache/chronoclip/buffer/seg_000123.ts ...
+                                         + in-memory SegmentIndex (ring)
+                                                                               │
+ hotkey / tray / `chronoclip save` ──► SaveService: snapshot ─► remux ─► ~/Videos/Chronoclip/<ts>.mp4
 ```
 
 ### Components
 
 | Component | Crate | Responsibility |
 |---|---|---|
-| `Settings` | `chronoclip-core` | Load/save/validate config (TOML in the OS config dir). Clamp buffer to 5..=45 min. |
+| `Settings` | `chronoclip-core` | Load/save/validate config (TOML in `$XDG_CONFIG_HOME/chronoclip/`). Clamp buffer to 5..=45 min. |
 | `SegmentIndex` | `chronoclip-core` | Ordered ring of finished segments (path, start PTS, duration, size). Prunes segments older than `buffer_len + margin` and deletes their files. |
-| `SaveService` | `chronoclip-core` | On request: snapshot the index, force-close the current segment, pick segments covering the last N minutes, starting at a keyframe, and remux into a single MP4 (`-c copy` equivalent). Runs off the hot path. |
-| `CaptureSource` trait | `chronoclip-capture` | `start(target) -> stream of frames`, `stop()`. Backends: `wgc` (Windows), `pipewire` (Linux), `sck` (macOS). |
-| `AudioSource` trait | `chronoclip-capture` | System loopback and optional microphone. |
-| `Encoder` / `SegmentWriter` | `chronoclip-encode` | FFmpeg wrappers. Select best hardware encoder, configure closed GOP aligned to segment length so each segment starts with a keyframe. |
-| App wiring | `src-tauri` | Tray icon, global hotkey, Tauri commands/events, lifecycle (start/stop recording, detect WoW window). |
-| UI | `src/` | Settings, status (recording / buffer fill / disk use), recent clips. |
+| `SaveService` | `chronoclip-core` | On request: snapshot the index, close the current segment, pick segments covering the last N minutes (starting at a keyframe), remux into one MP4. Runs off the hot path; pinned segments aren't pruned until it finishes. |
+| `VideoSource` / `AudioSource` traits | `chronoclip-capture` | `start(target)` → frame stream, `stop()`. Backends: X11 (first), portal+PipeWire (later). |
+| `Encoder` / `SegmentWriter` | `chronoclip-encode` | FFmpeg wrappers. Probe and select NVENC / VAAPI / software; closed GOP aligned to segment length so every segment starts with an IDR frame. |
+| App | `app/` | Slint UI, tray icon, global hotkey, single-instance IPC + CLI, lifecycle (start/stop, WoW detection), desktop notifications. |
+
+### Linux integration
+
+Implementation order follows the reference setup (Linux Mint Cinnamon on X11, NVIDIA, WoW DX12 via Faugus/Proton): **X11 column first**.
+
+| Concern | X11 (first) | Wayland (later) |
+|---|---|---|
+| Video capture | `XCompositeRedirectWindow` on the WoW window → named pixmap → `GLX_EXT_texture_from_pixmap` GL texture → CUDA graphics interop → NVENC. Frames never touch the CPU. Handles window resize / fullscreen toggle by re-binding the pixmap. | xdg-desktop-portal ScreenCast (`ashpd`) → PipeWire stream, DMA-BUF when available. Persist the portal **restore token** so the user picks the WoW window only once. |
+| Audio | PipeWire: capture the WoW/Wine app stream node, or the default sink monitor | same |
+| Encoder | NVENC (NVIDIA, via FFmpeg `h264_nvenc` / `hevc_nvenc` / `av1_nvenc` with CUDA hw frames), VAAPI (AMD/Intel) | same |
+| Global hotkey | XGrabKey (`global-hotkey` crate) | GlobalShortcuts portal (KDE Plasma 6, GNOME 48+, Hyprland). Fallback: user binds `chronoclip save` in their desktop settings |
+| Tray | StatusNotifierItem (`ksni`); GNOME needs the AppIndicator extension | same |
+| IPC (`chronoclip save`) | Unix socket in `$XDG_RUNTIME_DIR/chronoclip.sock` | same |
+| Notifications | `org.freedesktop.Notifications` | same |
+
+Software encoding fallback must be LGPL/BSD-compatible (e.g. OpenH264), never `libx264`. The UI warns that software encoding costs FPS.
 
 ## Key design decisions
 
@@ -48,19 +64,23 @@ A 45 minute buffer at 1440p can be 5 to 10 GB, too much for RAM. Short fixed-len
 - precise save boundaries (± one segment),
 - crash resilience (finished segments are valid files).
 
+The default location is `$XDG_CACHE_HOME/chronoclip/buffer`, because `/tmp` and `$XDG_RUNTIME_DIR` are RAM-backed tmpfs on many distros.
+
 ### Keyframe-aligned segments
-The encoder uses a GOP equal to the segment length (e.g. 120 frames at 60 fps). Every segment starts with an IDR frame, so any suffix of segments can be concatenated without re-encoding.
+GOP length equals segment length (e.g. 120 frames at 60 fps), so any suffix of segments concatenates cleanly without re-encoding.
 
 ### Save is a remux
-Concatenating segments into MP4 with stream copy is I/O bound and takes seconds even for 45 minutes. The capture pipeline keeps running while a save is in progress; segments being saved are pinned (not pruned) until the save completes.
-
-### Capture target
-Capture the WoW window (`Wow.exe` / `WowClassic.exe`) via Windows Graphics Capture when found, falling back to the monitor it is on. Never hook the game.
+Stream-copy concatenation into MP4 is I/O bound and takes seconds even for 45 minutes. Capture keeps running during a save.
 
 ### Threading
 - Capture thread → bounded channel → encoder thread → segment writer.
-- If the encoder falls behind, drop frames (and record a metric) rather than buffering unboundedly.
-- The Tauri/UI thread only sends commands and receives status events.
+- If the encoder falls behind, drop frames (and count them) rather than buffering unboundedly.
+- The Slint event loop only receives status updates and sends commands. Closing the window to tray destroys it; recording continues headless.
+
+### Capture target
+**Borderless windowed is the primary supported mode** (it's what the maintainer uses, and it gives a stable window size and painless alt-tab). Exclusive fullscreen is best-effort.
+
+Prefer capturing the WoW window over the full monitor. On X11, find it automatically: Proton/Wine windows for `Wow.exe` (WM_CLASS `wow.exe` / `steam_app_*`, or `_NET_WM_PID` → `/proc/<pid>/cmdline` containing `Wow.exe`); let the user pick a window manually if detection fails. The game's graphics API (DX12 → vkd3d-proton → Vulkan) doesn't matter, because we capture the X11 window, not the swapchain. On Wayland the user picks the window in the portal dialog the first time; the restore token remembers it.
 
 ## Disk usage estimate
 
@@ -76,7 +96,9 @@ The UI should show this estimate when the user changes buffer length or quality.
 
 ## Open questions
 
-- Segment container: MPEG-TS (robust, simple) vs fragmented MP4 (smaller overhead).
+- Segment container: MPEG-TS (robust, simple) vs fragmented MP4.
 - FFmpeg bindings: `ffmpeg-next` vs `rsmpeg` vs a thin custom FFI layer.
-- Zero-copy GPU path: WGC texture → NVENC/AMF via D3D11 hwcontext, to avoid a CPU readback.
-- Linux: WoW under Wine/Proton through the PipeWire screencast portal, which requires a one-time user prompt.
+- X11 + NVIDIA: GLX texture-from-pixmap → CUDA interop (as in gpu-screen-recorder) vs NvFBC (monitor-only, availability on GeForce varies by driver). Prototype the first in M2.
+- Cinnamon "unredirects" fullscreen windows for performance. WoW's borderless "Windowed (Fullscreen)" mode may still be flagged `_NET_WM_STATE_FULLSCREEN` and get unredirected. Our own `XCompositeRedirectWindow` should keep an off-screen pixmap regardless; verify this in M2. Exclusive fullscreen is lower priority.
+- Wayland zero-copy: PipeWire DMA-BUF → VAAPI surface import; NVIDIA (DMA-BUF → CUDA → NVENC).
+- Packaging: Flatpak (natural fit for portals, but GPU encoder access needs care) vs AppImage vs AUR.

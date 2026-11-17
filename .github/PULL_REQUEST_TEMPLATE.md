@@ -9,8 +9,7 @@
 ## How was it tested
 
 - [ ] `cargo fmt`, `cargo clippy -D warnings`, `cargo test --workspace`
-- [ ] `pnpm lint`, `pnpm check`, `pnpm test`
-- [ ] Tested manually in-game (OS / GPU / encoder: ...)
+- [ ] Tested manually in-game (OS, Wayland/X11, desktop, GPU, encoder: ...)
 
 ## Checklist
 

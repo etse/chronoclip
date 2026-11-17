@@ -1,102 +1,128 @@
 # Chronoclip
 
-> An open source, lightweight **replay buffer for World of Warcraft**. Think NVIDIA ShadowPlay "Instant Replay", but vendor-neutral, open, and built around WoW.
+> An open source, lightweight **replay buffer for World of Warcraft on Linux**. Think NVIDIA ShadowPlay "Instant Replay", but native to Linux, vendor-neutral, and built around WoW running through Wine / Proton / Lutris.
 
 Chronoclip continuously records your gameplay to a rolling buffer on disk. When something worth keeping happens (a boss kill, a clutch arena win, a hilarious wipe) press your hotkey (default **`Ctrl+F9`**) and the last *N* minutes are saved as a normal video file.
 
 > **Status:** 🚧 Pre-alpha. The repository is scaffolded but the app is not implemented yet. See [Roadmap](#roadmap).
 
----
+## Why
+
+Windows players have ShadowPlay, ReLive, Medal and friends. On Linux the options are either general-purpose (OBS) or CLI-first. Chronoclip is a small, focused, native desktop app for one job: *always be recording WoW, save the good bits with one key*. It is built by a Linux WoW player for their own use and shared in case it is useful to others.
 
 ## Features (planned)
 
-- **Always-on replay buffer**: records continuously to a temporary location and discards old footage automatically.
-- **Save on hotkey**: a configurable global hotkey (default `Ctrl+F9`) saves the buffered footage.
+- **Always-on replay buffer**: records continuously to a buffer directory and discards old footage automatically.
+- **Save on hotkey**: a configurable global hotkey (default `Ctrl+F9`) saves the buffered footage. Works on X11 and on Wayland (via the GlobalShortcuts portal).
 - **Configurable buffer length**: from **5 to 45 minutes** (default **10**).
 - **Instant saves**: saving remuxes already-encoded segments into an MP4 with no re-encoding, so it takes seconds, not minutes.
-- **Hardware encoding**: NVENC (NVIDIA), AMF (AMD) and Quick Sync (Intel), with a software (x264) fallback.
-- **Game + optional microphone audio.**
-- **Low overhead**: native Rust core, no bundled Chromium. The UI uses the OS webview.
-- **Safe for your account**: captures the window through official OS capture APIs. Chronoclip **never** injects into, hooks, or reads the memory of the game process.
-- **System tray app** with a clean settings UI.
+- **Hardware encoding**: VAAPI (AMD / Intel) and NVENC (NVIDIA).
+- **Game + optional microphone audio** via PipeWire.
+- **Fully native and lightweight**: Rust all the way down, native UI with [Slint](https://slint.dev). No Electron, no webview.
+- **X11 and Wayland**: X11 first (Linux Mint, and others), Wayland via portals.
+- **Safe for your account**: captures through the desktop's official screen-capture APIs. Chronoclip **never** injects into, hooks, or reads the memory of the game process.
+- **Tray app** that keeps recording when the window is closed, plus a `chronoclip save` CLI command.
 
 ## Tech stack
 
-| Layer | Choice | Why |
-|---|---|---|
-| Desktop shell | [Tauri 2](https://tauri.app) | Native app with a web UI, but uses the system webview (WebView2 / WebKit), so the footprint is ~10x smaller than Electron. |
-| Core / backend | Rust | Predictable performance, no GC pauses, safe concurrency for the capture → encode → write pipeline. |
-| UI | Svelte 5 + TypeScript + Vite | Small, fast runtime with an excellent dev loop. |
-| Video capture | Windows Graphics Capture (Windows) | Official, injection-free window capture. macOS (ScreenCaptureKit) and Linux (PipeWire) are planned. |
-| Audio capture | WASAPI loopback (+ mic) | System/game audio without drivers. |
-| Encoding / muxing | FFmpeg (libav*, LGPL, dynamically linked) | Hardware encoders, segment muxing, lossless concat on save. |
-| Global hotkey | `tauri-plugin-global-shortcut` | Works while the game is focused. |
+| Layer | Choice |
+|---|---|
+| Language | Rust (single Cargo workspace, no Node / JS toolchain) |
+| UI | Slint (native, GPU or software rendered) |
+| Video capture | XComposite → OpenGL texture (X11, GPU-only path), xdg-desktop-portal ScreenCast + PipeWire (Wayland) |
+| Audio capture | PipeWire |
+| Encoding / muxing | FFmpeg (libav*, LGPL, dynamically linked): NVENC (via CUDA), VAAPI |
+| Global hotkey | GlobalShortcuts portal (Wayland), X11 key grab, fallback `chronoclip save` CLI |
+| Tray | StatusNotifierItem |
 
-The reasoning is recorded in [docs/adr/0001-tech-stack.md](docs/adr/0001-tech-stack.md). The design is in [docs/architecture.md](docs/architecture.md).
+The reasoning is recorded in [docs/adr/](docs/adr/). The design is in [docs/architecture.md](docs/architecture.md).
 
 ## How it works (short version)
 
 ```
- WoW window ──► Capture (WGC) ──► HW encoder (NVENC/AMF/QSV) ──► 2 s segments in temp dir
- Game audio ──► WASAPI loopback ─┘                                (rolling, oldest deleted)
-                                                                          │
-                                       Ctrl+F9 ──► snapshot last N min ───┘
-                                                     └──► remux (no re-encode) ──► ~/Videos/Chronoclip/*.mp4
+ WoW window ──► XComposite / PipeWire ──► NVENC / VAAPI ──► 2 s segments in ~/.cache
+ Game audio ──► PipeWire ──────────────┘                     (rolling, oldest deleted)
+                                                                    │
+            Ctrl+F9 / `chronoclip save` ──► take last N min ────────┘
+                                              └──► remux (no re-encode) ──► ~/Videos/Chronoclip/*.mp4
 ```
 
-## Platform support
+## Requirements
 
-| Platform | Status |
+| | |
 |---|---|
-| Windows 10 (1903+) / 11 | Primary target |
-| macOS 12.3+ | Planned (ScreenCaptureKit) |
-| Linux (WoW via Wine/Proton/Lutris) | Planned (PipeWire / xdg-desktop-portal) |
+| Display server | X11 (primary) or Wayland |
+| Global hotkey on Wayland | A compositor with the GlobalShortcuts portal: KDE Plasma 6, GNOME 48+, Hyprland. Otherwise bind `chronoclip save` in your desktop's keyboard settings |
+| Screen capture on Wayland | xdg-desktop-portal with a backend for your desktop (one-time permission prompt) |
+| Audio | PipeWire |
+| GPU | Any with VAAPI (AMD / Intel) or NVENC (NVIDIA) |
+| Tray icon | StatusNotifierItem support (KDE yes; GNOME needs the AppIndicator extension) |
+
+### Reference setup
+
+Chronoclip is developed and tested first on the maintainer's machine. Other setups should work but are best-effort until someone tests them.
+
+| | |
+|---|---|
+| Distro | Linux Mint 22 (Cinnamon, X11), Ubuntu 24.04 base |
+| GPU | NVIDIA, proprietary driver |
+| WoW | Retail, DirectX 12 (vkd3d-proton), launched with [Faugus Launcher](https://github.com/Faugus/faugus-launcher) (UMU / Proton) |
+| Display mode | Borderless windowed ("Windowed (Fullscreen)") |
 
 ## Getting started (development)
 
 > The app code does not exist yet. These are the intended prerequisites and commands.
 
-**Prerequisites**
-
-- [Rust](https://rustup.rs) (stable, see `rust-toolchain.toml` once added)
-- [Node.js](https://nodejs.org) 22 LTS and [pnpm](https://pnpm.io)
-- [Tauri 2 prerequisites](https://tauri.app/start/prerequisites/) for your OS
-- FFmpeg shared libraries (dev headers), LGPL build
-
-**Commands (once implemented)**
+- [Rust](https://rustup.rs) stable
+- Build dependencies. On Linux Mint / Ubuntu / Debian:
+  ```sh
+  sudo apt install clang pkg-config libavcodec-dev libavformat-dev libavutil-dev \
+    libswscale-dev libswresample-dev libva-dev libpipewire-0.3-dev \
+    libdbus-1-dev libxkbcommon-dev libfontconfig1-dev
+  ```
+  On Arch: `sudo pacman -S --needed clang pkgconf ffmpeg libva pipewire dbus libxkbcommon fontconfig`
 
 ```sh
-pnpm install          # install frontend dependencies
-pnpm tauri dev        # run the app in dev mode
-pnpm tauri build      # produce an installer
-cargo test --workspace
-pnpm test
+cargo run -p chronoclip            # run the app
+cargo test --workspace             # run tests
+chronoclip save                    # save a replay from the running instance
 ```
 
 ## Configuration
 
 | Setting | Default | Range / notes |
 |---|---|---|
-| Save hotkey | `Ctrl+F9` | Any global key combination |
+| Save hotkey | `Ctrl+F9` | Any key combination |
 | Buffer length | 10 min | 5 to 45 min |
-| Buffer location | OS temp dir (`%TEMP%\chronoclip\buffer`) | Should be on a fast SSD |
-| Output folder | `Videos/Chronoclip` | |
+| Buffer location | `~/.cache/chronoclip/buffer` | Must be on disk (SSD), **not** a RAM-backed tmpfs like `/tmp` or `$XDG_RUNTIME_DIR` on many distros |
+| Output folder | `~/Videos/Chronoclip` (XDG videos dir) | |
 | Resolution / FPS | Native / 60 | 30, 60, 120, 144 |
-| Encoder | Auto (best available HW) | NVENC, AMF, QSV, x264 |
-| Bitrate / quality | Auto | CQP/CRF or CBR |
-| Microphone | Off | Separate track when enabled |
+| Encoder | Auto (best available) | VAAPI, NVENC, software fallback |
+| Quality | Auto | Constant quality or constant bitrate |
+| Microphone | Off | Separate audio track when enabled |
 
 **Disk usage tip:** at 1080p60 and ~20 Mbit/s, a 10 minute buffer uses about 1.5 GB. A 45 minute buffer at the same bitrate uses about 6.8 GB.
 
 ## Roadmap
 
 1. **M0, scaffold** ✅ repo, docs, agent instructions
-2. **M1, skeleton app**: Tauri + Svelte shell, tray icon, settings persisted to disk
-3. **M2, capture pipeline (Windows)**: WGC capture → HW encode → rolling segments
-4. **M3, save replay**: global hotkey → lossless remux of the last N minutes to MP4
-5. **M4, audio**: game audio loopback, optional mic track
-6. **M5, polish**: notifications, clip library view, auto-start with Windows, auto-detect WoW running
-7. **M6, other platforms**: Linux (PipeWire), macOS (ScreenCaptureKit)
+2. **M1, skeleton app**: Slint window, tray icon, settings persisted to disk, single instance + `chronoclip save` IPC
+3. **M2, capture pipeline (X11 + NVIDIA)**: XComposite window capture → GL texture → CUDA → NVENC → rolling segments
+4. **M3, save replay**: X11 global hotkey → lossless remux of the last N minutes to MP4
+5. **M4, audio**: game audio via PipeWire, optional mic track
+6. **M5, polish**: notifications, clip library, autostart, WoW window auto-detection
+7. **M6, Wayland + AMD/Intel**: portal/PipeWire capture, GlobalShortcuts portal, VAAPI
+8. **M7, packaging**: .deb (Mint/Ubuntu), AppImage, Flatpak, AUR
+
+## Non-goals
+
+- **Windows / macOS support.** Great tools already exist there.
+- Streaming, editing, or uploading clips.
+
+## Prior art
+
+- [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/): excellent Linux GPU recorder with a replay mode. Worth studying.
+- [OBS Studio](https://obsproject.com) replay buffer.
 
 ## Contributing
 
@@ -104,7 +130,7 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). The repositor
 
 ## License
 
-[MIT](LICENSE). FFmpeg is used under the LGPL via dynamic linking.
+[MIT](LICENSE). FFmpeg is used under the LGPL via dynamic linking. The UI uses [Slint](https://slint.dev) under its Royalty-free Desktop License (attribution shown in the About page).
 
 ## Disclaimer
 

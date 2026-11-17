@@ -5,8 +5,12 @@ This file is the **single source of truth** for agent instructions. Tool-specifi
 
 ## Project
 
-**Chronoclip** is an open source replay buffer for World of Warcraft (ShadowPlay-style "Instant Replay").
-It continuously records gameplay to a rolling on-disk buffer in a temp location. A configurable global hotkey (default `Ctrl+F9`) saves the last N minutes (5 to 45, default 10) as an MP4.
+**Chronoclip** is an open source replay buffer for World of Warcraft **on Linux** (ShadowPlay-style "Instant Replay"). WoW runs through Wine / Proton / Lutris.
+It continuously records gameplay to a rolling on-disk buffer. A configurable global hotkey (default `Ctrl+F9`) saves the last N minutes (5 to 45, default 10) as an MP4.
+
+The maintainer builds it for their own use as a Linux gamer and shares it with others. **Linux is the only target.** Windows and macOS are non-goals; don't add cross-platform abstractions for them.
+
+**Reference setup (build and verify against this first):** Linux Mint 22 Cinnamon on **X11** (Ubuntu 24.04 base), **NVIDIA** GPU with the proprietary driver, WoW Retail on **DirectX 12** (vkd3d-proton) in **borderless windowed** mode, launched through **Faugus Launcher** (UMU/Proton). This makes **X11 + NVENC** the first backend to implement; Wayland and VAAPI come later.
 
 Read before making non-trivial changes:
 
@@ -16,21 +20,23 @@ Read before making non-trivial changes:
 
 ## Tech stack
 
-- **Tauri 2** desktop shell, **Rust** backend (Cargo workspace)
-- **Svelte 5 + TypeScript + Vite** frontend, managed with **pnpm**
-- **FFmpeg** (libav*, LGPL, dynamically linked) for encoding and muxing
-- Windows Graphics Capture + WASAPI on Windows (primary platform). PipeWire (Linux) and ScreenCaptureKit (macOS) later.
+- **Rust** only (Cargo workspace). No Node/JS toolchain, no webview, no Electron/Tauri.
+- **Slint** for the UI (`.slint` files).
+- **FFmpeg** (libav*, LGPL, dynamically linked) for encoding (VAAPI, NVENC) and muxing.
+- **X11** (first): XComposite window capture → GLX texture-from-pixmap → CUDA interop → NVENC, XGrabKey hotkeys.
+- **Wayland** (later): xdg-desktop-portal (ScreenCast, GlobalShortcuts) via `ashpd` + PipeWire.
+- **PipeWire** for audio on both.
 
 ## Repository layout (target)
 
 ```
 .
-├── src/                     # Svelte frontend (UI only, no business logic)
-├── src-tauri/               # Tauri app crate: commands, tray, hotkey, wiring
+├── app/                       # Binary crate `chronoclip`: main, tray, hotkeys, IPC, CLI, UI wiring
+│   └── ui/                    # Slint UI files (*.slint), presentation only
 ├── crates/
-│   ├── chronoclip-core/     # Platform-agnostic: settings, ring buffer, segment index, save/remux
-│   ├── chronoclip-capture/  # Capture trait + per-OS backends (cfg-gated)
-│   └── chronoclip-encode/   # FFmpeg encoder/muxer wrappers
+│   ├── chronoclip-core/       # Pure logic: settings, segment ring buffer, save/remux orchestration
+│   ├── chronoclip-capture/    # VideoSource/AudioSource traits; X11 and portal+PipeWire backends
+│   └── chronoclip-encode/     # FFmpeg encoder/muxer wrappers, encoder auto-selection
 ├── docs/
 │   ├── architecture.md
 │   └── adr/
@@ -44,44 +50,44 @@ Directories that don't exist yet should be created following this layout.
 > The app is not implemented yet. Once it is, keep this section accurate.
 
 ```sh
-pnpm install
-pnpm tauri dev                     # run app
-pnpm tauri build                   # build installer
-cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings
+cargo run -p chronoclip
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-pnpm lint && pnpm check && pnpm test
 ```
 
-Before declaring a task done, run formatting, lint, and tests for every part you touched, and report the actual results.
+Before declaring a task done, run format, clippy, and tests, and report the actual results. Capture, hotkey, and encoder code usually needs a real desktop session to verify. Say clearly what was tested automatically and what still needs a manual in-game check.
 
 ## Hard rules
 
-1. **Never touch the game process.** No DLL injection, no D3D/Vulkan hooking, no memory reading, no input automation. Capture only through official OS APIs (WGC, PipeWire portal, ScreenCaptureKit). This protects users' Battle.net accounts and is non-negotiable.
-2. **Performance is a feature.** The capture → encode → write hot path must not allocate per frame where avoidable, must not block on the UI thread, and must use hardware encoders when available. Saving a replay must be a remux (stream copy), never a re-encode.
-3. **Bounded disk usage.** The buffer must always delete segments older than the configured length (plus a small margin). Clean up the temp buffer on startup and shutdown.
-4. **Platform code is isolated** behind traits in `chronoclip-capture` and gated with `#[cfg(target_os = "...")]`. `chronoclip-core` must compile on every OS.
-5. **Frontend is presentation only.** Business logic lives in Rust and is exposed via typed Tauri commands and events.
-6. **License hygiene.** Project is MIT. Do not add GPL dependencies or link FFmpeg statically / with GPL-only components (e.g. a GPL x264 build) without an ADR.
-7. **No secrets, telemetry, or network calls** unless an ADR explicitly allows them.
+1. **Never touch the game process.** No DLL injection, no D3D/Vulkan/OpenGL hooking (including Vulkan layers or `LD_PRELOAD` tricks), no memory reading, no input automation. Capture only through X11 (XComposite) or the portal/PipeWire APIs. This protects users' Battle.net accounts and is non-negotiable.
+2. **Performance is a feature.** The capture → encode → write hot path must not allocate per frame where avoidable, must not block the UI thread, and must use hardware encoders when available. Keep frames on the GPU: no `XGetImage`/CPU readback in the normal path (X11: XComposite pixmap → GL texture → CUDA → NVENC; Wayland: DMA-BUF import). Saving a replay must be a remux (stream copy), never a re-encode.
+3. **Bounded disk usage.** The buffer must always delete segments older than the configured length (plus a small margin). Clean up the buffer dir on startup and shutdown. Never default the buffer to a RAM-backed tmpfs (`/tmp`, `$XDG_RUNTIME_DIR`).
+4. **X11 first, Wayland must stay possible.** Implement X11 first, but keep backends behind the `VideoSource` / hotkey abstractions so a Wayland path (portal) can be added. Every hotkey path also has the `chronoclip save` CLI fallback.
+5. **Keep `chronoclip-core` pure.** No FFI, D-Bus, or PipeWire there, so it stays fast to compile and easy to unit-test.
+6. **UI is presentation only.** Business logic lives in Rust crates. `.slint` files hold layout, styling, and bindings, not logic.
+7. **License hygiene.** Project is MIT. No GPL dependencies; in particular no static FFmpeg and no `libx264`/`libx265`. Slint is used under its Royalty-free Desktop License: keep the attribution in the About page. New licensing implications need an ADR.
+8. **No telemetry or network calls** unless an ADR explicitly allows them.
 
 ## Coding conventions
 
 ### Rust
-- Edition 2021+, stable toolchain. `cargo fmt` and `clippy -D warnings` clean.
-- Errors: `thiserror` in library crates, `anyhow` only at the app boundary.
+- Stable toolchain. `cargo fmt` and `clippy -D warnings` clean.
+- Errors: `thiserror` in library crates, `anyhow` only in `app/`.
 - Logging: `tracing`. No `println!` in library code.
 - No `unwrap()` / `expect()` outside tests unless the invariant is documented in a comment.
-- `unsafe` (FFI to Windows/FFmpeg) must be wrapped in a small safe abstraction with a `// SAFETY:` comment.
-- Concurrency: dedicated threads for capture and encoding, bounded channels between them. Drop frames rather than grow memory unbounded.
+- `unsafe` (FFI to FFmpeg, CUDA, GL, PipeWire, X11) must be wrapped in a small safe abstraction with a `// SAFETY:` comment.
+- Concurrency: dedicated threads for capture and encoding with bounded channels between them. Drop frames rather than grow memory unbounded. The Slint event loop thread only receives state updates (`slint::invoke_from_event_loop`).
+- Paths: use XDG dirs via the `directories` crate, never hard-coded paths.
 
-### TypeScript / Svelte
-- `strict` TypeScript, Svelte 5 runes.
-- Tauri command calls go through a single typed API module (e.g. `src/lib/api.ts`), not scattered `invoke()` calls.
-- Keep components small. Prefer accessible, keyboard-navigable UI.
+### Slint
+- One component per file where reasonable, under `app/ui/`.
+- Expose state through Slint `global`s / properties and callbacks; keep Rust ↔ UI glue in one module in `app/`.
+- Keyboard-navigable and readable at 100% to 200% scaling.
 
 ### General
-- Settings changes must be validated in Rust (e.g. buffer length clamped to 5..=45 minutes).
-- Write tests for platform-agnostic logic (ring buffer pruning, segment selection for a save, settings validation).
+- Settings are validated in Rust (e.g. buffer length clamped to 5..=45 minutes).
+- Write tests for pure logic (segment pruning, segment selection for a save, settings validation).
 - Keep changes focused. Update docs and this file when you change commands, layout, or architecture.
 
 ## Git
