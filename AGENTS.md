@@ -3,6 +3,16 @@
 Instructions for AI coding agents working in this repository (Claude Code, opencode, Codex, Cursor, and others).
 This file is the **single source of truth** for agent instructions. Tool-specific files (`CLAUDE.md`, `opencode.json`) only point here. Do not duplicate content into them.
 
+## Session start
+
+At the start of every new session, **before anything else**, read [docs/roadmap.md](docs/roadmap.md) and give the maintainer a short milestone summary:
+
+1. A compact table of all milestones with their status (✅ / 🚧 / ⬜).
+2. The current or next milestone, with its open tasks (unchecked boxes) or, if it has no checklist yet, its one-line scope.
+3. Anything uncommitted (`git status --short`) or noted as pending in the roadmap.
+
+Keep it brief (under ~15 lines), then answer the maintainer's first message. If that message is itself a task, give the summary first and then do the task.
+
 ## Project
 
 **Chronoclip** is an open source replay buffer for World of Warcraft **on Linux** (ShadowPlay-style "Instant Replay"). WoW runs through Wine / Proton / Lutris.
