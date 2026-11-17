@@ -16,6 +16,7 @@ Read before making non-trivial changes:
 
 - [README.md](README.md): features, stack, roadmap
 - [docs/architecture.md](docs/architecture.md): pipeline design and module boundaries
+- [docs/roadmap.md](docs/roadmap.md): milestone status and task checklists. Tick tasks off as you finish them.
 - [docs/adr/](docs/adr/): architecture decision records. Do not contradict an accepted ADR without writing a new one.
 
 ## Tech stack
@@ -34,31 +35,30 @@ Read before making non-trivial changes:
 ├── app/                       # Binary crate `chronoclip`: main, tray, hotkeys, IPC, CLI, UI wiring
 │   └── ui/                    # Slint UI files (*.slint), presentation only
 ├── crates/
-│   ├── chronoclip-core/       # Pure logic: settings, segment ring buffer, save/remux orchestration
-│   ├── chronoclip-capture/    # (M2) VideoSource/AudioSource traits; X11 and portal+PipeWire backends
-│   └── chronoclip-encode/     # (M2) FFmpeg encoder/muxer wrappers, encoder auto-selection
+│   ├── chronoclip-core/       # Pure logic: settings, hotkeys, segment index, paths, IPC protocol
+│   ├── chronoclip-capture/    # Window finding + X11 capture (XComposite → GLX → CUDA); Wayland later
+│   └── chronoclip-encode/     # FFmpeg: NVENC encoder (CUDA frames), MPEG-TS segment writer
 ├── docs/
 │   ├── architecture.md
 │   └── adr/
 └── AGENTS.md
 ```
 
-Crates marked (M2) don't exist yet; create them following this layout.
-
-Inside `app/src/`: `main.rs` (CLI + startup), `controller.rs` (handles commands from UI/tray/IPC on any thread), `ui.rs` (Slint ↔ settings glue), `ipc.rs` (Unix socket, single instance), `tray.rs` (wires Slint's built-in `SystemTrayIcon`, defined in `ui/tray.slint`).
+Inside `app/src/`: `main.rs` (CLI + startup), `controller.rs` (handles commands from UI/tray/IPC on any thread, owns the recorder), `recorder.rs` (capture/encode thread + writer thread), `ui.rs` (Slint ↔ settings glue), `ipc.rs` (Unix socket, single instance), `tray.rs` (wires Slint's built-in `SystemTrayIcon`, defined in `ui/tray.slint`).
 
 ## Commands
 
-```sh
-# One-time system deps (Mint/Ubuntu); M2 will add FFmpeg/PipeWire/CUDA dev packages
-sudo apt install pkg-config libfontconfig1-dev libxkbcommon-dev
+System dependencies are listed in [INSTALL.md](INSTALL.md).
 
+```sh
 cargo run -p chronoclip            # start the app (or show the running one)
 cargo run -p chronoclip -- save    # talk to the running instance: save | show | quit
 RUST_LOG=debug cargo run -p chronoclip
+CHRONOCLIP_WINDOW=glxgears cargo run -p chronoclip   # record any window by title instead of WoW
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+cargo test --workspace -- --ignored   # GPU tests: need X11, NVIDIA and glxgears
 ```
 
 Before declaring a task done, run format, clippy, and tests, and report the actual results. Capture, hotkey, and encoder code usually needs a real desktop session to verify. Say clearly what was tested automatically and what still needs a manual in-game check.
@@ -73,6 +73,7 @@ Before declaring a task done, run format, clippy, and tests, and report the actu
 6. **UI is presentation only.** Business logic lives in Rust crates. `.slint` files hold layout, styling, and bindings, not logic.
 7. **License hygiene.** Project is MIT. No GPL dependencies; in particular no static FFmpeg and no `libx264`/`libx265`. Slint is used under its Royalty-free Desktop License: keep the attribution in the About page. New licensing implications need an ADR.
 8. **No telemetry or network calls** unless an ADR explicitly allows them.
+9. **Every system dependency is documented in [INSTALL.md](INSTALL.md).** When you add or remove anything users or developers must install (apt packages, drivers, runtime libraries), update INSTALL.md in the same change: the user section for runtime needs, the developer section for build-only needs, with the reason for each. Prefer loading optional system libraries at runtime (`libloading`) over requiring `-dev` packages.
 
 ## Coding conventions
 

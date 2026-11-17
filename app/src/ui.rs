@@ -45,7 +45,7 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
     let paths = Rc::new(paths);
 
     window.set_version(env!("CARGO_PKG_VERSION").into());
-    window.set_status_text("Not recording (capture arrives in milestone 2)".into());
+    window.set_status_text("Starting…".into());
     window.set_fps_options(string_model(SUPPORTED_FPS.iter().map(u32::to_string)));
     window.set_encoder_options(string_model(
         EncoderPreference::ALL
@@ -74,6 +74,7 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
     window.on_apply({
         let weak = window.as_weak();
         let paths = Rc::clone(&paths);
+        let controller = Arc::clone(&controller);
         move || {
             let Some(window) = weak.upgrade() else { return };
             let result = read_settings(&window, &paths).and_then(|s| {
@@ -86,6 +87,7 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
                     show_settings(&window, &settings, &paths);
                     set_message(&window, "Settings saved.", false);
                     tracing::info!(?settings, "settings saved");
+                    controller.apply_settings(&settings);
                 }
                 Err(e) => set_message(&window, &e, true),
             }

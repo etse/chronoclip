@@ -8,6 +8,9 @@ publish.workspace = true
 
 [dependencies]
 chronoclip-core.workspace = true
+chronoclip-capture.workspace = true
+chronoclip-encode.workspace = true
+ffmpeg-next.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 slint.workspace = true

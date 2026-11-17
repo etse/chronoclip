@@ -1,6 +1,7 @@
 export component Tray inherits SystemTrayIcon {
     icon: @image-url("icons/chronoclip-64.png");
-    tooltip: "Chronoclip";
+    in property <string> status: "Chronoclip";
+    tooltip: root.status;
     title: "Chronoclip";
 
     callback open();

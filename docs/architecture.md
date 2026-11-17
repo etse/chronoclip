@@ -46,7 +46,7 @@ Implementation order follows the reference setup (Linux Mint Cinnamon on X11, NV
 
 | Concern | X11 (first) | Wayland (later) |
 |---|---|---|
-| Video capture | `XCompositeRedirectWindow` on the WoW window → named pixmap → `GLX_EXT_texture_from_pixmap` GL texture → CUDA graphics interop → NVENC. Frames never touch the CPU. Handles window resize / fullscreen toggle by re-binding the pixmap. | xdg-desktop-portal ScreenCast (`ashpd`) → PipeWire stream, DMA-BUF when available. Persist the portal **restore token** so the user picks the WoW window only once. |
+| Video capture | `XCompositeRedirectWindow` on the WoW window → named pixmap → `GLX_EXT_texture_from_pixmap` texture → drawn with a full-screen-triangle shader into our own RGBA8 texture (NVIDIA can't attach pixmap textures to an FBO, so no blit) → registered with CUDA (`cuGraphicsGLRegisterImage`) → `cuMemcpy2D` into the encoder's CUDA frame → NVENC. Frames never touch the CPU. **Copy mode:** NVIDIA refuses `glXCreatePixmap` (BadAlloc) on the backing pixmap of windows rendered via Vulkan/DXVK (Wine/Proton games, Battle.net, Chrome); for those the X server first copies the window into a pixmap we own (`XCopyArea`, a server-side GPU copy) and that pixmap is bound instead. A resize or minimize ends the session; the recorder then starts a new one at the new size. | xdg-desktop-portal ScreenCast (`ashpd`) → PipeWire stream, DMA-BUF when available. Persist the portal **restore token** so the user picks the WoW window only once. |
 | Audio | PipeWire: capture the WoW/Wine app stream node, or the default sink monitor | same |
 | Encoder | NVENC (NVIDIA, via FFmpeg `h264_nvenc` / `hevc_nvenc` / `av1_nvenc` with CUDA hw frames), VAAPI (AMD/Intel) | same |
 | Global hotkey | XGrabKey (`global-hotkey` crate) | GlobalShortcuts portal (KDE Plasma 6, GNOME 48+, Hyprland). Fallback: user binds `chronoclip save` in their desktop settings |
@@ -94,11 +94,25 @@ Prefer capturing the WoW window over the full monitor. On X11, find it automatic
 
 The UI should show this estimate when the user changes buffer length or quality.
 
+## Measured (M2, RTX 4080, release build)
+
+| | |
+|---|---|
+| Capture + GPU copy per frame | ~0.4 ms (1280×720, debug build) |
+| CPU while recording 2560×1368 @ 60 fps | ~2% of one core |
+| GPU / NVENC load | ~8% / ~9% |
+| Memory | ~100 MB private; NVIDIA driver libraries and GPU mappings add ~330 MB shared/mapped |
+
+## Decisions made in M2
+
+- Segment container: **MPEG-TS**, 2 s, H.264 with SPS/PPS repeated at every IDR. Segments concatenate without re-encoding.
+- FFmpeg bindings: **`ffmpeg-next`** for muxing, raw `ffi` for the CUDA hwcontext.
+- X11 + NVIDIA capture: **GLX texture-from-pixmap → shader copy → CUDA interop**. No NvFBC.
+- Libraries (X11, GLX, GL, CUDA) are loaded at runtime with `libloading`/`x11-dl`, so users need no `-dev` packages.
+- Recording uses the CUDA *primary* context, shared by FFmpeg and the capture code.
+
 ## Open questions
 
-- Segment container: MPEG-TS (robust, simple) vs fragmented MP4.
-- FFmpeg bindings: `ffmpeg-next` vs `rsmpeg` vs a thin custom FFI layer.
-- X11 + NVIDIA: GLX texture-from-pixmap → CUDA interop (as in gpu-screen-recorder) vs NvFBC (monitor-only, availability on GeForce varies by driver). Prototype the first in M2.
 - Cinnamon "unredirects" fullscreen windows for performance. WoW's borderless "Windowed (Fullscreen)" mode may still be flagged `_NET_WM_STATE_FULLSCREEN` and get unredirected. Our own `XCompositeRedirectWindow` should keep an off-screen pixmap regardless; verify this in M2. Exclusive fullscreen is lower priority.
 - Wayland zero-copy: PipeWire DMA-BUF → VAAPI surface import; NVIDIA (DMA-BUF → CUDA → NVENC).
 - Packaging: Flatpak (natural fit for portals, but GPU encoder access needs care) vs AppImage vs AUR.

@@ -69,16 +69,13 @@ Chronoclip is developed and tested first on the maintainer's machine. Other setu
 | WoW | Retail, DirectX 12 (vkd3d-proton), launched with [Faugus Launcher](https://github.com/Faugus/faugus-launcher) (UMU / Proton) |
 | Display mode | Borderless windowed ("Windowed (Fullscreen)") |
 
+## Installation
+
+**See [INSTALL.md](INSTALL.md)** for what to install, both to run Chronoclip (users) and to build it (developers).
+
 ## Getting started (development)
 
-- [Rust](https://rustup.rs) stable (`rust-toolchain.toml` picks it automatically)
-- Build dependencies. On Linux Mint / Ubuntu / Debian:
-  ```sh
-  sudo apt install pkg-config libfontconfig1-dev libxkbcommon-dev
-  ```
-  On Arch: `sudo pacman -S --needed pkgconf fontconfig libxkbcommon`
-
-  The capture pipeline (M2) will add FFmpeg, PipeWire and CUDA/VAAPI dev packages.
+Install the developer dependencies from [INSTALL.md](INSTALL.md#developers-building-from-source), then:
 
 ```sh
 cargo run -p chronoclip            # run the app (shows the window of a running instance if there is one)
@@ -105,9 +102,11 @@ Settings are stored in `~/.config/chronoclip/settings.toml`.
 
 ## Roadmap
 
+Detailed status and task checklists: [docs/roadmap.md](docs/roadmap.md).
+
 1. **M0, scaffold** ✅ repo, docs, agent instructions
 2. **M1, skeleton app** ✅ Slint window, tray icon, settings persisted to disk, single instance + `chronoclip save` IPC
-3. **M2, capture pipeline (X11 + NVIDIA)**: XComposite window capture → GL texture → CUDA → NVENC → rolling segments
+3. **M2, capture pipeline (X11 + NVIDIA)** ✅ XComposite window capture → GL texture → CUDA → NVENC → rolling segments
 4. **M3, save replay**: X11 global hotkey → lossless remux of the last N minutes to MP4
 5. **M4, audio**: game audio via PipeWire, optional mic track
 6. **M5, polish**: notifications, clip library, autostart, WoW window auto-detection

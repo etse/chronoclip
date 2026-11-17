@@ -5,6 +5,7 @@
 
 mod controller;
 mod ipc;
+mod recorder;
 mod tray;
 mod ui;
 
@@ -117,11 +118,15 @@ fn run_app(hidden: bool) -> anyhow::Result<ExitCode> {
     });
 
     let window = ui::MainWindow::new().context("could not create the window")?;
-    let controller = Arc::new(Controller::new(window.as_weak()));
+    let controller = Arc::new(Controller::new(window.as_weak(), paths.clone()));
     ui::init(&window, paths.clone(), &settings, Arc::clone(&controller));
 
     // Keep the tray alive until the event loop ends; dropping it removes the icon.
-    let _tray = tray::create(Arc::clone(&controller));
+    let tray = tray::create(Arc::clone(&controller));
+    if let Some(tray) = &tray {
+        controller.set_tray(tray.as_weak());
+    }
+    controller.apply_settings(&settings);
     ipc::serve(listener, Arc::clone(&controller)).context("could not start IPC thread")?;
 
     if !hidden {
@@ -130,6 +135,7 @@ fn run_app(hidden: bool) -> anyhow::Result<ExitCode> {
     tracing::info!(config = %paths.config_file.display(), "Chronoclip started");
     slint::run_event_loop_until_quit()?;
 
+    controller.shutdown();
     ipc::cleanup(&paths.socket);
     tracing::info!("Chronoclip stopped");
     Ok(ExitCode::SUCCESS)

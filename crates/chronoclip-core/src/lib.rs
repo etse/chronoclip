@@ -9,6 +9,7 @@ pub mod disk;
 pub mod hotkey;
 pub mod ipc;
 pub mod paths;
+pub mod segments;
 pub mod settings;
 
 pub use hotkey::Hotkey;
