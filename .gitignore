@@ -1,0 +1,51 @@
+# --- Rust ---
+/target/
+**/target/
+**/*.rs.bk
+
+# --- Tauri ---
+src-tauri/gen/schemas/
+src-tauri/WixTools/
+
+# --- Node / frontend ---
+node_modules/
+dist/
+build/
+.svelte-kit/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Recordings / test media (never commit) ---
+*.mp4
+*.mkv
+*.ts.seg
+*.m4s
+/recordings/
+/buffer/
+
+# --- FFmpeg binaries fetched for local dev ---
+/vendor/ffmpeg/
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Editors / OS ---
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Agent local state (shared config like AGENTS.md / CLAUDE.md IS committed) ---
+.claude/settings.local.json
+CLAUDE.local.md
+.opencode/node_modules/
