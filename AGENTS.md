@@ -35,22 +35,27 @@ Read before making non-trivial changes:
 │   └── ui/                    # Slint UI files (*.slint), presentation only
 ├── crates/
 │   ├── chronoclip-core/       # Pure logic: settings, segment ring buffer, save/remux orchestration
-│   ├── chronoclip-capture/    # VideoSource/AudioSource traits; X11 and portal+PipeWire backends
-│   └── chronoclip-encode/     # FFmpeg encoder/muxer wrappers, encoder auto-selection
+│   ├── chronoclip-capture/    # (M2) VideoSource/AudioSource traits; X11 and portal+PipeWire backends
+│   └── chronoclip-encode/     # (M2) FFmpeg encoder/muxer wrappers, encoder auto-selection
 ├── docs/
 │   ├── architecture.md
 │   └── adr/
 └── AGENTS.md
 ```
 
-Directories that don't exist yet should be created following this layout.
+Crates marked (M2) don't exist yet; create them following this layout.
+
+Inside `app/src/`: `main.rs` (CLI + startup), `controller.rs` (handles commands from UI/tray/IPC on any thread), `ui.rs` (Slint ↔ settings glue), `ipc.rs` (Unix socket, single instance), `tray.rs` (wires Slint's built-in `SystemTrayIcon`, defined in `ui/tray.slint`).
 
 ## Commands
 
-> The app is not implemented yet. Once it is, keep this section accurate.
-
 ```sh
-cargo run -p chronoclip
+# One-time system deps (Mint/Ubuntu); M2 will add FFmpeg/PipeWire/CUDA dev packages
+sudo apt install pkg-config libfontconfig1-dev libxkbcommon-dev
+
+cargo run -p chronoclip            # start the app (or show the running one)
+cargo run -p chronoclip -- save    # talk to the running instance: save | show | quit
+RUST_LOG=debug cargo run -p chronoclip
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace

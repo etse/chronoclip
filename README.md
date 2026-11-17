@@ -33,7 +33,7 @@ Windows players have ShadowPlay, ReLive, Medal and friends. On Linux the options
 | Audio capture | PipeWire |
 | Encoding / muxing | FFmpeg (libav*, LGPL, dynamically linked): NVENC (via CUDA), VAAPI |
 | Global hotkey | GlobalShortcuts portal (Wayland), X11 key grab, fallback `chronoclip save` CLI |
-| Tray | StatusNotifierItem |
+| Tray | Slint `SystemTrayIcon` (StatusNotifierItem) |
 
 The reasoning is recorded in [docs/adr/](docs/adr/). The design is in [docs/architecture.md](docs/architecture.md).
 
@@ -71,22 +71,22 @@ Chronoclip is developed and tested first on the maintainer's machine. Other setu
 
 ## Getting started (development)
 
-> The app code does not exist yet. These are the intended prerequisites and commands.
-
-- [Rust](https://rustup.rs) stable
+- [Rust](https://rustup.rs) stable (`rust-toolchain.toml` picks it automatically)
 - Build dependencies. On Linux Mint / Ubuntu / Debian:
   ```sh
-  sudo apt install clang pkg-config libavcodec-dev libavformat-dev libavutil-dev \
-    libswscale-dev libswresample-dev libva-dev libpipewire-0.3-dev \
-    libdbus-1-dev libxkbcommon-dev libfontconfig1-dev
+  sudo apt install pkg-config libfontconfig1-dev libxkbcommon-dev
   ```
-  On Arch: `sudo pacman -S --needed clang pkgconf ffmpeg libva pipewire dbus libxkbcommon fontconfig`
+  On Arch: `sudo pacman -S --needed pkgconf fontconfig libxkbcommon`
+
+  The capture pipeline (M2) will add FFmpeg, PipeWire and CUDA/VAAPI dev packages.
 
 ```sh
-cargo run -p chronoclip            # run the app
+cargo run -p chronoclip            # run the app (shows the window of a running instance if there is one)
+cargo run -p chronoclip -- save    # save | show | quit, sent to the running instance
 cargo test --workspace             # run tests
-chronoclip save                    # save a replay from the running instance
 ```
+
+Settings are stored in `~/.config/chronoclip/settings.toml`.
 
 ## Configuration
 
@@ -106,7 +106,7 @@ chronoclip save                    # save a replay from the running instance
 ## Roadmap
 
 1. **M0, scaffold** ✅ repo, docs, agent instructions
-2. **M1, skeleton app**: Slint window, tray icon, settings persisted to disk, single instance + `chronoclip save` IPC
+2. **M1, skeleton app** ✅ Slint window, tray icon, settings persisted to disk, single instance + `chronoclip save` IPC
 3. **M2, capture pipeline (X11 + NVIDIA)**: XComposite window capture → GL texture → CUDA → NVENC → rolling segments
 4. **M3, save replay**: X11 global hotkey → lossless remux of the last N minutes to MP4
 5. **M4, audio**: game audio via PipeWire, optional mic track

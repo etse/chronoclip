@@ -1,0 +1,38 @@
+export component Tray inherits SystemTrayIcon {
+    icon: @image-url("icons/chronoclip-64.png");
+    tooltip: "Chronoclip";
+    title: "Chronoclip";
+
+    callback open();
+    callback save-replay();
+    callback quit();
+
+    clicked => {
+        root.open();
+    }
+
+    Menu {
+        MenuItem {
+            title: "Open Chronoclip";
+            activated => {
+                root.open();
+            }
+        }
+
+        MenuItem {
+            title: "Save replay";
+            activated => {
+                root.save-replay();
+            }
+        }
+
+        MenuSeparator { }
+
+        MenuItem {
+            title: "Quit";
+            activated => {
+                root.quit();
+            }
+        }
+    }
+}

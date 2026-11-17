@@ -1,0 +1,276 @@
+import { AboutSlint, Button, ComboBox, GroupBox, LineEdit, Palette, Slider, Switch, TabWidget } from "std-widgets.slint";
+
+export { Tray } from "tray.slint";
+
+component Hint inherits Text {
+    font-size: 12px;
+    opacity: 0.7;
+    wrap: word-wrap;
+}
+
+component FolderField {
+    in property <string> label;
+    in-out property <string> path;
+    callback open();
+
+    VerticalLayout {
+        spacing: 4px;
+        Text {
+            text: root.label;
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            LineEdit {
+                text <=> root.path;
+                horizontal-stretch: 1;
+            }
+
+            Button {
+                text: "Open";
+                clicked => {
+                    root.open();
+                }
+            }
+        }
+    }
+}
+
+export component MainWindow inherits Window {
+    title: "Chronoclip";
+    icon: @image-url("icons/chronoclip-256.png");
+    preferred-width: 560px;
+    min-width: 440px;
+
+    // Status (set from Rust)
+    in property <string> version;
+    in property <bool> recording: false;
+    in property <string> status-text: "Not recording";
+    in property <string> message;
+    in property <bool> message-is-error: false;
+    in property <[string]> fps-options;
+    in property <[string]> encoder-options;
+
+    // Editable settings (read by Rust on apply)
+    in-out property <string> hotkey;
+    in-out property <float> buffer-minutes: 10;
+    in-out property <string> fps;
+    in-out property <string> encoder;
+    in-out property <bool> microphone;
+    in-out property <string> buffer-dir;
+    in-out property <string> output-dir;
+
+    pure callback estimate-disk(int, string) -> string;
+    pure callback buffer-dir-warning(string) -> string;
+    callback apply();
+    callback reset-defaults();
+    callback open-folder(string);
+    callback save-replay();
+
+    property <int> minutes: Math.round(root.buffer-minutes);
+    property <string> dir-warning: root.buffer-dir-warning(root.buffer-dir);
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 6px;
+                    background: root.recording ? #e5484d : #8b8d98;
+                }
+            }
+
+            Text {
+                text: root.status-text;
+                font-weight: 600;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+
+            Button {
+                text: "Save replay";
+                enabled: root.recording;
+                clicked => {
+                    root.save-replay();
+                }
+            }
+        }
+
+        TabWidget {
+            Tab {
+                title: "Settings";
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 12px;
+
+                    GroupBox {
+                        title: "Replay buffer";
+                        VerticalLayout {
+                            spacing: 8px;
+                            HorizontalLayout {
+                                Text {
+                                    text: "Keep the last";
+                                    horizontal-stretch: 1;
+                                }
+
+                                Text {
+                                    text: root.minutes + " minutes";
+                                    font-weight: 600;
+                                }
+                            }
+
+                            Slider {
+                                minimum: 5;
+                                maximum: 45;
+                                value <=> root.buffer-minutes;
+                            }
+
+                            Hint {
+                                text: root.estimate-disk(root.minutes, root.fps);
+                            }
+
+                            HorizontalLayout {
+                                spacing: 12px;
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text {
+                                        text: "Frame rate";
+                                    }
+
+                                    ComboBox {
+                                        model: root.fps-options;
+                                        current-value <=> root.fps;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text {
+                                        text: "Encoder";
+                                    }
+
+                                    ComboBox {
+                                        model: root.encoder-options;
+                                        current-value <=> root.encoder;
+                                    }
+                                }
+                            }
+
+                            Switch {
+                                text: "Record microphone (separate audio track)";
+                                checked <=> root.microphone;
+                            }
+                        }
+                    }
+
+                    GroupBox {
+                        title: "Save hotkey";
+                        VerticalLayout {
+                            spacing: 4px;
+                            LineEdit {
+                                text <=> root.hotkey;
+                                placeholder-text: "Ctrl+F9";
+                            }
+
+                            Hint {
+                                text: "Modifiers: Ctrl, Alt, Shift, Super. Keys: F1-F24, A-Z, 0-9. You can also bind the command `chronoclip save` in your desktop's keyboard settings.";
+                            }
+                        }
+                    }
+
+                    GroupBox {
+                        title: "Folders";
+                        VerticalLayout {
+                            spacing: 8px;
+                            FolderField {
+                                label: "Buffer (temporary recording)";
+                                path <=> root.buffer-dir;
+                                open => {
+                                    root.open-folder(root.buffer-dir);
+                                }
+                            }
+
+                            if root.dir-warning != "": Hint {
+                                text: root.dir-warning;
+                                color: #e5484d;
+                                opacity: 1;
+                            }
+
+                            FolderField {
+                                label: "Saved clips";
+                                path <=> root.output-dir;
+                                open => {
+                                    root.open-folder(root.output-dir);
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        vertical-stretch: 1;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: root.message;
+                            color: root.message-is-error ? #e5484d : Palette.foreground;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            wrap: word-wrap;
+                        }
+
+                        Button {
+                            text: "Reset to defaults";
+                            clicked => {
+                                root.reset-defaults();
+                            }
+                        }
+
+                        Button {
+                            text: "Save settings";
+                            primary: true;
+                            clicked => {
+                                root.apply();
+                            }
+                        }
+                    }
+                }
+            }
+
+            Tab {
+                title: "About";
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 8px;
+                    Text {
+                        text: "Chronoclip " + root.version;
+                        font-size: 18px;
+                        font-weight: 700;
+                    }
+
+                    Text {
+                        text: "Open source replay buffer for World of Warcraft on Linux.";
+                        wrap: word-wrap;
+                    }
+
+                    Hint {
+                        text: "MIT licensed. Not affiliated with or endorsed by Blizzard Entertainment.";
+                    }
+
+                    AboutSlint { }
+
+                    Rectangle {
+                        vertical-stretch: 1;
+                    }
+                }
+            }
+        }
+    }
+}

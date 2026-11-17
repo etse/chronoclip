@@ -50,7 +50,7 @@ Implementation order follows the reference setup (Linux Mint Cinnamon on X11, NV
 | Audio | PipeWire: capture the WoW/Wine app stream node, or the default sink monitor | same |
 | Encoder | NVENC (NVIDIA, via FFmpeg `h264_nvenc` / `hevc_nvenc` / `av1_nvenc` with CUDA hw frames), VAAPI (AMD/Intel) | same |
 | Global hotkey | XGrabKey (`global-hotkey` crate) | GlobalShortcuts portal (KDE Plasma 6, GNOME 48+, Hyprland). Fallback: user binds `chronoclip save` in their desktop settings |
-| Tray | StatusNotifierItem (`ksni`); GNOME needs the AppIndicator extension | same |
+| Tray | Slint `SystemTrayIcon` (StatusNotifierItem); GNOME needs the AppIndicator extension | same |
 | IPC (`chronoclip save`) | Unix socket in `$XDG_RUNTIME_DIR/chronoclip.sock` | same |
 | Notifications | `org.freedesktop.Notifications` | same |
 
