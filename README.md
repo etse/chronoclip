@@ -112,6 +112,7 @@ Detailed status and task checklists: [docs/roadmap.md](docs/roadmap.md).
 6. **M5, polish**: notifications, clip library, autostart, WoW window auto-detection
 7. **M6, Wayland + AMD/Intel**: portal/PipeWire capture, GlobalShortcuts portal, VAAPI
 8. **M7, packaging**: .deb (Mint/Ubuntu), AppImage, Flatpak, AUR
+9. **M8, better-looking UI** (nice to have): visual redesign of the window and tray menu, consistent theming (light/dark), icons
 
 ## Non-goals
 

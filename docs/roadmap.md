@@ -7,11 +7,31 @@ Status: ✅ done · 🚧 in progress · ⬜ not started
 | M0 | Scaffold: repo, docs, agent instructions | ✅ |
 | M1 | Skeleton app: Slint window, tray, settings, single instance, `chronoclip save/show/quit` | ✅ |
 | M2 | Capture pipeline (X11 + NVIDIA) | ✅ |
-| M3 | Save replay: global hotkey, lossless remux to MP4 | ⬜ |
+| M3 | Save replay: global hotkey, lossless remux to MP4 | 🚧 |
 | M4 | Audio: game audio via PipeWire, optional mic track | ⬜ |
 | M5 | Polish: notifications, clip library, autostart, WoW auto-detection | ⬜ |
 | M6 | Wayland + AMD/Intel: portal/PipeWire capture, GlobalShortcuts portal, VAAPI | ⬜ |
 | M7 | Packaging: .deb, AppImage, Flatpak, AUR | ⬜ |
+| M8 | Better-looking UI (nice to have): visual redesign, theming, icons | ⬜ |
+
+## M3: Save replay
+
+Goal: pressing the hotkey (default `Ctrl+F9`), clicking Save in the window or tray, or running `chronoclip save` writes the last N minutes as an MP4 to the output folder within seconds, by stream copy, while recording continues.
+
+- [ ] `chronoclip-core`: pick the segments for a save: the newest ones covering the buffer length, starting at the oldest segment that still exists (unit tested)
+- [ ] `chronoclip-core`: clip file naming (`Chronoclip_YYYY-MM-DD_HH-MM-SS.mp4`, no overwrites on collision) and free-space check against the snapshot size (unit tested)
+- [ ] Segment pinning: segments in a running save are not deleted by pruning until the save finishes; pruning catches up afterwards so disk use stays bounded
+- [ ] Include the moment of the press: the save waits for the in-progress segment to finish (≤ 2 s) before taking the snapshot
+- [ ] `chronoclip-encode`: remux MPEG-TS segments → one MP4 (stream copy, rebased continuous timestamps, `+faststart`), written to a temp file and renamed when complete
+- [ ] SaveService in `app/`: runs on its own thread, never blocks capture or the UI; one save at a time (a second request while saving is rejected with a message)
+- [ ] Controller: `save_replay` (UI button, tray, IPC) triggers the save; `chronoclip save` returns the clip path or the error
+- [ ] Global hotkey on X11 (XGrabKey, ignoring NumLock/CapsLock state) behind a `HotkeyBackend` abstraction; re-registered when the setting changes; a grab failure (key taken by another app) is shown in the UI
+- [ ] Feedback: last saved clip and save errors in the UI status and tray tooltip; "Open folder" for the output folder (desktop notifications come in M5)
+- [ ] Docs: architecture.md (save path, decisions), INSTALL.md if dependencies change, README usage
+- [ ] Verified: glxgears save at 5 and 45 min buffers; clip plays and seeks in mpv and a browser, duration matches, no gap or stutter at segment joins; save time measured
+- [ ] Verified in-game: hotkey works while WoW (borderless) has focus, game stays smooth during a save
+
+Out of scope: audio (M4), notifications and clip library (M5), Wayland GlobalShortcuts portal (M6; `chronoclip save` is the fallback there). Trimming or editing clips is not planned.
 
 ## M2: Capture pipeline (X11 + NVIDIA)
 
