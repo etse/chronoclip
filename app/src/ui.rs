@@ -183,7 +183,7 @@ fn dir_setting(text: &str, default: &Path, paths: &Paths) -> Option<PathBuf> {
     (path != default).then_some(path)
 }
 
-fn capitalize(s: &str) -> String {
+pub fn capitalize(s: &str) -> String {
     let mut chars = s.chars();
     chars
         .next()

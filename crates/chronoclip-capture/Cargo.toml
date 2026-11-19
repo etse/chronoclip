@@ -1,13 +1,15 @@
 [package]
 name = "chronoclip-capture"
-description = "Window capture for Chronoclip: X11 (XComposite + GLX) to CUDA, without touching the game process."
+description = "X11 integration for Chronoclip: window capture (XComposite + GLX) to CUDA and the global hotkey, without touching the game process."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [dependencies]
+chronoclip-core.workspace = true
 gl.workspace = true
+libc.workspace = true
 libloading.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

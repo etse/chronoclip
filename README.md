@@ -4,7 +4,7 @@
 
 Chronoclip continuously records your gameplay to a rolling buffer on disk. When something worth keeping happens (a boss kill, a clutch arena win, a hilarious wipe) press your hotkey (default **`Ctrl+F9`**) and the last *N* minutes are saved as a normal video file.
 
-> **Status:** 🚧 Pre-alpha. The repository is scaffolded but the app is not implemented yet. See [Roadmap](#roadmap).
+> **Status:** 🚧 Pre-alpha. Recording and saving replays work on X11 with an NVIDIA GPU (video only; audio is next). See [Roadmap](#roadmap).
 
 ## Why
 
@@ -85,11 +85,21 @@ cargo test --workspace             # run tests
 
 Settings are stored in `~/.config/chronoclip/settings.toml`.
 
+## Saving a replay
+
+Any of these saves the last *N* minutes (your buffer length) while recording keeps going:
+
+- press the hotkey (default **`Ctrl+F9`**), also while WoW has focus,
+- click **Save replay** in the window, or **Save replay** in the tray menu,
+- run `chronoclip save`. It waits for the clip and prints its path, so you can also bind it to a key in your desktop's keyboard settings (the way to go on Wayland until the portal hotkey lands).
+
+Clips go to `~/Videos/Chronoclip/Chronoclip_YYYY-MM-DD_HH-MM-SS.mp4` (H.264 in MP4, plays everywhere, starts instantly in browsers and Discord). The save waits up to two seconds for the moment you pressed the key to be written, then copies the video without re-encoding, so even long clips take seconds. If the WoW window changed size during the buffer, the clip starts at the resize.
+
 ## Configuration
 
 | Setting | Default | Range / notes |
 |---|---|---|
-| Save hotkey | `Ctrl+F9` | Any key combination |
+| Save hotkey | `Ctrl+F9` | Ctrl / Alt / Shift / Super + F1–F24, A–Z or 0–9 (bare F-keys allowed). Shown in red if another program already uses it |
 | Buffer length | 10 min | 5 to 45 min |
 | Buffer location | `~/.cache/chronoclip/buffer` | Must be on disk (SSD), **not** a RAM-backed tmpfs like `/tmp` or `$XDG_RUNTIME_DIR` on many distros |
 | Output folder | `~/Videos/Chronoclip` (XDG videos dir) | |
@@ -107,7 +117,7 @@ Detailed status and task checklists: [docs/roadmap.md](docs/roadmap.md).
 1. **M0, scaffold** ✅ repo, docs, agent instructions
 2. **M1, skeleton app** ✅ Slint window, tray icon, settings persisted to disk, single instance + `chronoclip save` IPC
 3. **M2, capture pipeline (X11 + NVIDIA)** ✅ XComposite window capture → GL texture → CUDA → NVENC → rolling segments
-4. **M3, save replay**: X11 global hotkey → lossless remux of the last N minutes to MP4
+4. **M3, save replay** 🚧 X11 global hotkey → lossless remux of the last N minutes to MP4 (done, pending an in-game check)
 5. **M4, audio**: game audio via PipeWire, optional mic track
 6. **M5, polish**: notifications, clip library, autostart, WoW window auto-detection
 7. **M6, Wayland + AMD/Intel**: portal/PipeWire capture, GlobalShortcuts portal, VAAPI

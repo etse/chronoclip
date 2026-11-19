@@ -69,6 +69,7 @@ fn captures_glxgears_window() -> Result<(), Box<dyn std::error::Error>> {
         encoder.time_base(),
         Duration::from_secs(2),
         0,
+        0,
     );
     let mut segments = Vec::new();
     let mut packets = Vec::new();

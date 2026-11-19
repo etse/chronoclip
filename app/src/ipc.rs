@@ -14,6 +14,9 @@ use chronoclip_core::ipc::{Request, Response};
 use crate::controller::Controller;
 
 const TIMEOUT: Duration = Duration::from_secs(5);
+/// `chronoclip save` waits for the clip: up to one segment for the open segment, then the
+/// remux, which for a 45 minute buffer is bounded by disk speed.
+const SAVE_TIMEOUT: Duration = Duration::from_secs(600);
 const MAX_LINE: u64 = 64 * 1024;
 
 pub enum Bound {
@@ -51,9 +54,20 @@ pub fn serve(listener: UnixListener, controller: Arc<Controller>) -> io::Result<
         .spawn(move || {
             for stream in listener.incoming() {
                 match stream {
+                    // One thread per connection: `save` waits for its clip and must not
+                    // block `show` or `quit` meanwhile.
                     Ok(stream) => {
-                        if let Err(e) = handle_connection(&stream, &controller) {
-                            tracing::debug!("IPC connection failed: {e}");
+                        let controller = Arc::clone(&controller);
+                        let spawned =
+                            thread::Builder::new()
+                                .name("ipc-client".into())
+                                .spawn(move || {
+                                    if let Err(e) = handle_connection(&stream, &controller) {
+                                        tracing::debug!("IPC connection failed: {e}");
+                                    }
+                                });
+                        if let Err(e) = spawned {
+                            tracing::warn!("could not handle IPC connection: {e}");
                         }
                     }
                     Err(e) => tracing::warn!("IPC accept failed: {e}"),
@@ -81,7 +95,11 @@ fn handle_connection(stream: &UnixStream, controller: &Controller) -> io::Result
 /// Send one request to the running instance and wait for its response.
 pub fn send(path: &Path, request: Request) -> io::Result<Response> {
     let stream = UnixStream::connect(path)?;
-    stream.set_read_timeout(Some(TIMEOUT))?;
+    let read_timeout = match request {
+        Request::Save => SAVE_TIMEOUT,
+        _ => TIMEOUT,
+    };
+    stream.set_read_timeout(Some(read_timeout))?;
     stream.set_write_timeout(Some(TIMEOUT))?;
     let mut writer = &stream;
     writeln!(writer, "{request}")?;

@@ -46,6 +46,9 @@ pub fn retention_for_minutes(minutes: u32) -> Duration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Segment {
     pub seq: u64,
+    /// Segments with the same `stream` share codec parameters (same encoder settings and size),
+    /// so they can be joined into one clip. It changes when the recording restarts at a new size.
+    pub stream: u64,
     pub path: PathBuf,
     /// Duration of video in the segment.
     pub duration: Duration,
@@ -54,12 +57,21 @@ pub struct Segment {
 
 /// Ordered (oldest first) list of finished segments that together cover at least the
 /// retention period, once enough has been recorded.
+///
+/// While a save is running, its segments are *pinned*: pruning still takes them out of the
+/// index, but holds them back instead of handing them out for deletion until [`unpin`].
+///
+/// [`unpin`]: SegmentIndex::unpin
 #[derive(Debug, Default)]
 pub struct SegmentIndex {
     segments: VecDeque<Segment>,
     retention: Duration,
     total_duration: Duration,
     total_bytes: u64,
+    /// Segments with `seq >= pinned_from` are not deleted.
+    pinned_from: Option<u64>,
+    /// Pruned while pinned; deleted on unpin.
+    deferred: Vec<Segment>,
 }
 
 impl SegmentIndex {
@@ -101,18 +113,66 @@ impl SegmentIndex {
             if let Some(oldest) = self.segments.pop_front() {
                 self.total_duration -= oldest.duration;
                 self.total_bytes -= oldest.bytes;
-                removed.push(oldest);
+                if self.pinned_from.is_some_and(|from| oldest.seq >= from) {
+                    self.deferred.push(oldest);
+                } else {
+                    removed.push(oldest);
+                }
             }
         }
         removed
     }
 
-    /// Remove all segments. Returns them so the caller can delete the files.
+    /// The newest segments that together cover at least `length` (or everything available),
+    /// oldest first. Only segments that can be joined with the newest one (same `stream`) are
+    /// included, so a clip never spans a change of resolution.
+    pub fn select_for_save(&self, length: Duration) -> Vec<Segment> {
+        let Some(newest) = self.segments.back() else {
+            return Vec::new();
+        };
+        let mut covered = Duration::ZERO;
+        let mut selected: Vec<Segment> = self
+            .segments
+            .iter()
+            .rev()
+            .take_while(|s| s.stream == newest.stream)
+            .take_while(|s| {
+                let more = covered < length;
+                covered += s.duration;
+                more
+            })
+            .cloned()
+            .collect();
+        selected.reverse();
+        selected
+    }
+
+    /// Protect segments with `seq >= from_seq` from deletion until [`unpin`](Self::unpin).
+    /// Only one pin exists at a time; pinning again replaces it.
+    pub fn pin(&mut self, from_seq: u64) {
+        self.pinned_from = Some(from_seq);
+    }
+
+    pub fn is_pinned(&self) -> bool {
+        self.pinned_from.is_some()
+    }
+
+    /// Release the pin. Returns segments that were pruned while pinned; the caller deletes them.
+    #[must_use = "the returned segments must be deleted from disk"]
+    pub fn unpin(&mut self) -> Vec<Segment> {
+        self.pinned_from = None;
+        std::mem::take(&mut self.deferred)
+    }
+
+    /// Remove all segments (including ones held back by a pin) and release the pin. Returns
+    /// them so the caller can delete the files.
     #[must_use = "the returned segments must be deleted from disk"]
     pub fn clear(&mut self) -> Vec<Segment> {
         self.total_duration = Duration::ZERO;
         self.total_bytes = 0;
-        self.segments.drain(..).collect()
+        let mut all = self.unpin();
+        all.extend(self.segments.drain(..));
+        all
     }
 
     pub fn total_duration(&self) -> Duration {
@@ -142,8 +202,13 @@ mod tests {
     use super::*;
 
     fn seg(seq: u64, secs: u64) -> Segment {
+        seg_in(0, seq, secs)
+    }
+
+    fn seg_in(stream: u64, seq: u64, secs: u64) -> Segment {
         Segment {
             seq,
+            stream,
             path: PathBuf::from(segment_file_name(seq)),
             duration: Duration::from_secs(secs),
             bytes: 1000,
@@ -214,6 +279,88 @@ mod tests {
         assert_eq!(index.clear().len(), 3);
         assert!(index.is_empty());
         assert_eq!(index.total_bytes(), 0);
+    }
+
+    fn seqs(segments: &[Segment]) -> Vec<u64> {
+        segments.iter().map(|s| s.seq).collect()
+    }
+
+    #[test]
+    fn selects_newest_segments_covering_length() {
+        let mut index = SegmentIndex::new(Duration::from_secs(60));
+        for seq in 0..10 {
+            let _ = index.push(seg(seq, 2));
+        }
+        assert_eq!(
+            seqs(&index.select_for_save(Duration::from_secs(6))),
+            vec![7, 8, 9]
+        );
+        // Not a multiple of the segment length: round up to cover it.
+        assert_eq!(
+            seqs(&index.select_for_save(Duration::from_secs(5))),
+            vec![7, 8, 9]
+        );
+        // Longer than what was recorded: everything.
+        assert_eq!(index.select_for_save(Duration::from_secs(600)).len(), 10);
+        assert!(
+            SegmentIndex::default()
+                .select_for_save(Duration::from_secs(60))
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn selection_stops_at_stream_change() {
+        let mut index = SegmentIndex::new(Duration::from_secs(60));
+        let _ = index.push(seg_in(0, 0, 2));
+        let _ = index.push(seg_in(0, 1, 2));
+        let _ = index.push(seg_in(1, 2, 2)); // resized: new stream
+        let _ = index.push(seg_in(1, 3, 2));
+        assert_eq!(
+            seqs(&index.select_for_save(Duration::from_secs(60))),
+            vec![2, 3]
+        );
+    }
+
+    #[test]
+    fn pinned_segments_are_deleted_only_after_unpin() {
+        let mut index = SegmentIndex::new(Duration::from_secs(4));
+        let _ = index.push(seg(0, 2));
+        let _ = index.push(seg(1, 2));
+        index.pin(0);
+        assert!(index.is_pinned());
+        // Both would be pruned, but they are pinned.
+        assert!(index.push(seg(2, 2)).is_empty());
+        assert!(index.push(seg(3, 2)).is_empty());
+        // Retention is still enforced for the index itself.
+        assert_eq!(seqs(&index.iter().cloned().collect::<Vec<_>>()), vec![2, 3]);
+        assert_eq!(seqs(&index.unpin()), vec![0, 1]);
+        assert!(!index.is_pinned());
+        assert_eq!(seqs(&index.push(seg(4, 2))), vec![2]);
+        assert!(index.unpin().is_empty());
+    }
+
+    #[test]
+    fn pin_protects_only_newer_segments() {
+        let mut index = SegmentIndex::new(Duration::from_secs(4));
+        for seq in 0..3 {
+            let _ = index.push(seg(seq, 2));
+        }
+        // Index holds 1, 2; a save of just the newest segment pins from 2.
+        index.pin(2);
+        assert_eq!(seqs(&index.push(seg(3, 2))), vec![1]);
+        assert!(index.push(seg(4, 2)).is_empty()); // 2 is pinned
+        assert_eq!(seqs(&index.unpin()), vec![2]);
+    }
+
+    #[test]
+    fn clear_includes_pinned_segments() {
+        let mut index = SegmentIndex::new(Duration::from_secs(2));
+        let _ = index.push(seg(0, 2));
+        index.pin(0);
+        assert!(index.push(seg(1, 2)).is_empty());
+        assert_eq!(seqs(&index.clear()), vec![0, 1]);
+        assert!(!index.is_pinned());
     }
 
     #[test]

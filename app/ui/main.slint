@@ -48,6 +48,12 @@ export component MainWindow inherits Window {
     in property <string> status-text: "Not recording";
     in property <string> message;
     in property <bool> message-is-error: false;
+    in property <bool> saving: false;
+    // Result of the last save (or why it failed).
+    in property <string> save-text;
+    in property <bool> save-is-error: false;
+    // Why the hotkey could not be registered; empty when it works.
+    in property <string> hotkey-error;
     in property <[string]> fps-options;
     in property <[string]> encoder-options;
 
@@ -91,13 +97,34 @@ export component MainWindow inherits Window {
                 font-weight: 600;
                 vertical-alignment: center;
                 horizontal-stretch: 1;
+                // Long status lines wrap instead of pushing the button out of the window.
+                wrap: word-wrap;
+                min-width: 120px;
             }
 
             Button {
-                text: "Save replay";
-                enabled: root.recording;
+                text: root.saving ? "Saving…" : "Save replay";
+                enabled: !root.saving;
                 clicked => {
                     root.save-replay();
+                }
+            }
+        }
+
+        if root.save-text != "": HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: root.save-text;
+                color: root.save-is-error ? #e5484d : Palette.foreground;
+                wrap: word-wrap;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+
+            if !root.save-is-error && !root.saving: Button {
+                text: "Open clips folder";
+                clicked => {
+                    root.open-folder(root.output-dir);
                 }
             }
         }
@@ -176,6 +203,12 @@ export component MainWindow inherits Window {
                             LineEdit {
                                 text <=> root.hotkey;
                                 placeholder-text: "Ctrl+F9";
+                            }
+
+                            if root.hotkey-error != "": Hint {
+                                text: root.hotkey-error;
+                                color: #e5484d;
+                                opacity: 1;
                             }
 
                             Hint {

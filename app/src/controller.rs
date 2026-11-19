@@ -2,16 +2,20 @@
 //!
 //! Lives on any thread; touches the UI only through `upgrade_in_event_loop`.
 
-use std::sync::{Mutex, OnceLock};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock, mpsc};
 
 use chronoclip_capture::WindowMatcher;
-use chronoclip_core::Paths;
 use chronoclip_core::disk::{format_duration, format_size};
 use chronoclip_core::ipc::{Request, Response};
 use chronoclip_core::settings::Settings;
+use chronoclip_core::{Hotkey, Paths};
 
+use crate::hotkey::GlobalHotkey;
 use crate::recorder::{Recorder, RecorderConfig, RecorderStatus};
-use crate::ui::{self, MainWindow, Tray};
+use crate::save::{self, SavedClip};
+use crate::ui::{MainWindow, Tray};
 
 /// Set to a window title (substring) to record that window instead of WoW. For testing.
 const WINDOW_ENV: &str = "CHRONOCLIP_WINDOW";
@@ -22,25 +26,102 @@ struct RecorderSlot {
     config: Option<RecorderConfig>,
 }
 
+struct HotkeySlot {
+    backend: GlobalHotkey,
+    /// The hotkey currently grabbed, if registering it worked.
+    registered: Option<Hotkey>,
+}
+
+/// Save progress and result, shown in the window and the tray tooltip.
+#[derive(Clone)]
+struct SaveFeedback {
+    window: slint::Weak<MainWindow>,
+    /// Line for the tray tooltip (shown with the next status update) about the last save.
+    last_save: Arc<Mutex<Option<String>>>,
+}
+
+impl SaveFeedback {
+    fn started(&self) {
+        let _ = self.window.upgrade_in_event_loop(|w| {
+            w.set_saving(true);
+            w.set_save_text("Saving replay…".into());
+            w.set_save_is_error(false);
+        });
+    }
+
+    fn finished(&self, result: &Result<SavedClip, String>) {
+        let (text, tray_line, is_error) = match result {
+            Ok(clip) => (
+                format!(
+                    "Saved {} in {:.1} s",
+                    clip.summary(),
+                    clip.elapsed.as_secs_f64()
+                ),
+                format!("Last clip: {}", clip.file_name()),
+                false,
+            ),
+            Err(e) => (e.clone(), format!("Save failed: {e}"), true),
+        };
+        *self.last_save.lock().unwrap_or_else(|e| e.into_inner()) = Some(tray_line);
+        let _ = self.window.upgrade_in_event_loop(move |w| {
+            w.set_saving(false);
+            w.set_save_text(text.into());
+            w.set_save_is_error(is_error);
+        });
+    }
+
+    /// A save that didn't start (busy, not recording).
+    fn refused(&self, message: String) {
+        let _ = self.window.upgrade_in_event_loop(move |w| {
+            w.set_save_text(message.into());
+            w.set_save_is_error(true);
+        });
+    }
+}
+
 pub struct Controller {
     window: slint::Weak<MainWindow>,
     tray: OnceLock<slint::Weak<Tray>>,
     paths: Paths,
     recorder: Mutex<RecorderSlot>,
+    hotkey: Mutex<Option<HotkeySlot>>,
+    output_dir: Mutex<PathBuf>,
+    saving: Arc<AtomicBool>,
+    last_save: Arc<Mutex<Option<String>>>,
 }
 
 impl Controller {
     pub fn new(window: slint::Weak<MainWindow>, paths: Paths) -> Self {
+        let output_dir = paths.default_output_dir.clone();
         Self {
             window,
             tray: OnceLock::new(),
             paths,
             recorder: Mutex::new(RecorderSlot::default()),
+            hotkey: Mutex::new(None),
+            output_dir: Mutex::new(output_dir),
+            saving: Arc::new(AtomicBool::new(false)),
+            last_save: Arc::new(Mutex::new(None)),
         }
     }
 
     pub fn set_tray(&self, tray: slint::Weak<Tray>) {
         let _ = self.tray.set(tray);
+    }
+
+    /// Use `backend` for the global hotkey. The hotkey itself is registered by `apply_settings`.
+    pub fn set_hotkey_backend(&self, backend: GlobalHotkey) {
+        *self.hotkey.lock().unwrap_or_else(|e| e.into_inner()) = Some(HotkeySlot {
+            backend,
+            registered: None,
+        });
+    }
+
+    fn feedback(&self) -> SaveFeedback {
+        SaveFeedback {
+            window: self.window.clone(),
+            last_save: Arc::clone(&self.last_save),
+        }
     }
 
     pub fn handle(&self, request: Request) -> Response {
@@ -50,7 +131,7 @@ impl Controller {
                 self.show_window();
                 Response::Ok(String::new())
             }
-            Request::Save => self.save_replay(),
+            Request::Save => self.save_and_wait(),
             Request::Quit => {
                 self.quit();
                 Response::Ok("quitting".into())
@@ -69,14 +150,93 @@ impl Controller {
         }
     }
 
-    /// Save the replay buffer. Saving arrives in milestone 3, so this reports that for now.
-    pub fn save_replay(&self) -> Response {
-        let msg = "Saving clips is not implemented yet (milestone 3).";
-        tracing::info!("save requested: {msg}");
+    /// Save the replay buffer in the background (window button, tray, hotkey). Progress and
+    /// result are shown in the window and tray tooltip.
+    pub fn save_replay(&self) {
+        if let Err(message) = self.start_save(|_| {}) {
+            tracing::info!("save not started: {message}");
+            self.feedback().refused(message);
+        }
+    }
+
+    /// Save and wait for the result (`chronoclip save`). Returns the clip path.
+    fn save_and_wait(&self) -> Response {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        if let Err(message) = self.start_save(move |result| {
+            let _ = sender.send(result.clone());
+        }) {
+            return Response::Error(message);
+        }
+        match receiver.recv() {
+            Ok(Ok(clip)) => Response::Ok(clip.path.display().to_string()),
+            Ok(Err(message)) => Response::Error(message),
+            Err(_) => Response::Error("The save stopped unexpectedly.".into()),
+        }
+    }
+
+    /// Start a save on its own thread; `done` runs there with the result. Fails at once if a
+    /// save is already running or nothing is being recorded.
+    fn start_save(
+        &self,
+        done: impl FnOnce(&Result<SavedClip, String>) + Send + 'static,
+    ) -> Result<(), String> {
+        if self.saving.swap(true, Ordering::SeqCst) {
+            return Err("Already saving a replay. Try again when it is done.".into());
+        }
+        let buffer = self
+            .recorder
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .recorder
+            .as_ref()
+            .map(Recorder::buffer);
+        let Some(buffer) = buffer else {
+            self.saving.store(false, Ordering::SeqCst);
+            return Err("Not recording, so there is nothing to save.".into());
+        };
+        let output_dir = self
+            .output_dir
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let saving = Arc::clone(&self.saving);
+        let feedback = self.feedback();
+        feedback.started();
+        let spawned = std::thread::Builder::new()
+            .name("save".into())
+            .spawn(move || {
+                let result = save::save_replay(&buffer, &output_dir);
+                if let Err(e) = &result {
+                    tracing::warn!("save failed: {e}");
+                }
+                saving.store(false, Ordering::SeqCst);
+                feedback.finished(&result);
+                done(&result);
+            });
+        spawned.map(drop).map_err(|e| {
+            self.saving.store(false, Ordering::SeqCst);
+            let message = format!("Could not start saving: {e}");
+            self.feedback().finished(&Err(message.clone()));
+            message
+        })
+    }
+
+    /// Register `hotkey` unless it is already active; shows a problem next to the setting.
+    fn apply_hotkey(&self, hotkey: Hotkey) {
+        let mut slot = self.hotkey.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(slot) = slot.as_mut() else { return };
+        if slot.registered == Some(hotkey) {
+            return;
+        }
+        let result = slot.backend.set(hotkey);
+        slot.registered = result.as_ref().ok().map(|()| hotkey);
+        let problem = result.err().unwrap_or_default();
+        if !problem.is_empty() {
+            tracing::warn!("hotkey: {problem}");
+        }
         let _ = self
             .window
-            .upgrade_in_event_loop(move |window| ui::set_message(&window, msg, true));
-        Response::Error(msg.into())
+            .upgrade_in_event_loop(move |w| w.set_hotkey_error(problem.into()));
     }
 
     pub fn quit(&self) {
@@ -88,6 +248,10 @@ impl Controller {
     /// Start the recorder, or update/restart it for changed settings. A change of buffer length
     /// alone is applied without interrupting the recording.
     pub fn apply_settings(&self, settings: &Settings) {
+        self.apply_hotkey(settings.hotkey);
+        *self.output_dir.lock().unwrap_or_else(|e| e.into_inner()) =
+            settings.output_dir(&self.paths);
+
         let config = RecorderConfig {
             buffer_dir: settings.buffer_dir(&self.paths),
             buffer_minutes: settings.buffer_minutes,
@@ -110,13 +274,19 @@ impl Controller {
             return;
         }
 
-        slot.recorder = None; // stops the old recorder and clears its buffer
+        // Stops the old recorder and clears its buffer. A running save finishes first.
+        slot.recorder = None;
         let window = self.window.clone();
         let tray = self.tray.get().cloned();
         let matcher = config.matcher.clone();
+        let last_save = Arc::clone(&self.last_save);
         slot.recorder = Some(Recorder::start(config.clone(), move |status| {
             let (text, recording) = status_text(&status, &matcher);
-            let tray_text = format!("Chronoclip: {text}");
+            let mut tray_text = format!("Chronoclip: {text}");
+            if let Some(line) = &*last_save.lock().unwrap_or_else(|e| e.into_inner()) {
+                tray_text.push('\n');
+                tray_text.push_str(line);
+            }
             let _ = window.upgrade_in_event_loop(move |w| {
                 w.set_status_text(text.into());
                 w.set_recording(recording);
@@ -128,8 +298,10 @@ impl Controller {
         slot.config = Some(config);
     }
 
-    /// Stop recording (deletes the buffer). Called on exit.
+    /// Release the hotkey and stop recording (deletes the buffer once a running save is done).
+    /// Called on exit.
     pub fn shutdown(&self) {
+        drop(self.hotkey.lock().unwrap_or_else(|e| e.into_inner()).take());
         let mut slot = self.recorder.lock().unwrap_or_else(|e| e.into_inner());
         slot.recorder = None;
     }

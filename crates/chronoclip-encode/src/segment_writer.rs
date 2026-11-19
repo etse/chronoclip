@@ -25,17 +25,20 @@ pub struct SegmentWriter {
     params: codec::Parameters,
     time_base: Rational,
     target: Duration,
+    stream: u64,
     next_seq: u64,
     current: Option<OpenSegment>,
 }
 
 impl SegmentWriter {
-    /// `time_base` is the time base of the packets' timestamps (the encoder's).
+    /// `time_base` is the time base of the packets' timestamps (the encoder's). `stream` is
+    /// stored in every [`Segment`]; segments with the same value can be joined into one clip.
     pub fn new(
         dir: &Path,
         params: codec::Parameters,
         time_base: Rational,
         target: Duration,
+        stream: u64,
         first_seq: u64,
     ) -> Self {
         Self {
@@ -43,6 +46,7 @@ impl SegmentWriter {
             params,
             time_base,
             target,
+            stream,
             next_seq: first_seq,
             current: None,
         }
@@ -51,6 +55,11 @@ impl SegmentWriter {
     /// Sequence number the next segment will get.
     pub fn next_seq(&self) -> u64 {
         self.next_seq
+    }
+
+    /// Sequence number of the segment being written, if one is open.
+    pub fn current_seq(&self) -> Option<u64> {
+        self.current.as_ref().map(|c| c.seq)
     }
 
     /// Write one packet. Returns the segment that was finished as a result, if any.
@@ -134,6 +143,7 @@ impl SegmentWriter {
         let end = next_pts.unwrap_or(current.end_pts);
         Ok(Some(Segment {
             seq: current.seq,
+            stream: self.stream,
             path: current.path,
             duration: self.ticks_to_duration(end - current.first_pts),
             bytes,

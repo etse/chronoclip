@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod clips;
 pub mod disk;
 pub mod hotkey;
 pub mod ipc;

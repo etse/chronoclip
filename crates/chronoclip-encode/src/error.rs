@@ -13,7 +13,13 @@ pub enum EncodeError {
     EncoderUnavailable(&'static str),
     #[error("out of memory in {0}")]
     OutOfMemory(&'static str),
-    #[error("could not write segment {path}: {source}")]
+    #[error("no segments to save")]
+    NoSegments,
+    #[error("the recording has no video stream")]
+    NoVideoStream,
+    #[error("path is not valid UTF-8: {}", .0.display())]
+    NonUtf8Path(PathBuf),
+    #[error("could not write {path}: {source}")]
     Io {
         path: PathBuf,
         source: std::io::Error,

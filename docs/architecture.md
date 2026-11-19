@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: design, not yet implemented. Update this document as the implementation lands.
+> Status: X11 + NVIDIA capture (M2) and saving replays (M3) are implemented; audio, Wayland and VAAPI are still design. Update this document as the implementation lands.
 
 ## Goals
 
@@ -34,8 +34,9 @@
 | Component | Crate | Responsibility |
 |---|---|---|
 | `Settings` | `chronoclip-core` | Load/save/validate config (TOML in `$XDG_CONFIG_HOME/chronoclip/`). Clamp buffer to 5..=45 min. |
-| `SegmentIndex` | `chronoclip-core` | Ordered ring of finished segments (path, start PTS, duration, size). Prunes segments older than `buffer_len + margin` and deletes their files. |
-| `SaveService` | `chronoclip-core` | On request: snapshot the index, close the current segment, pick segments covering the last N minutes (starting at a keyframe), remux into one MP4. Runs off the hot path; pinned segments aren't pruned until it finishes. |
+| `SegmentIndex` | `chronoclip-core` | Ordered ring of finished segments (seq, stream, path, duration, size). Prunes segments older than the buffer length, selects segments for a save, and holds back pinned segments from deletion. |
+| `ReplayBuffer` | `app/` (`buffer.rs`) | The `SegmentIndex` plus the segment being written, behind a mutex + condvar. Shared by the writer thread (adds segments, deletes pruned files) and saves. |
+| Save | `app/` (`save.rs`), remux in `chronoclip-encode` | See [Saving a replay](#saving-a-replay). Runs on its own thread; capture keeps running. |
 | `VideoSource` / `AudioSource` traits | `chronoclip-capture` | `start(target)` → frame stream, `stop()`. Backends: X11 (first), portal+PipeWire (later). |
 | `Encoder` / `SegmentWriter` | `chronoclip-encode` | FFmpeg wrappers. Probe and select NVENC / VAAPI / software; closed GOP aligned to segment length so every segment starts with an IDR frame. |
 | App | `app/` | Slint UI, tray icon, global hotkey, single-instance IPC + CLI, lifecycle (start/stop, WoW detection), desktop notifications. |
@@ -49,7 +50,7 @@ Implementation order follows the reference setup (Linux Mint Cinnamon on X11, NV
 | Video capture | `XCompositeRedirectWindow` on the WoW window → named pixmap → `GLX_EXT_texture_from_pixmap` texture → drawn with a full-screen-triangle shader into our own RGBA8 texture (NVIDIA can't attach pixmap textures to an FBO, so no blit) → registered with CUDA (`cuGraphicsGLRegisterImage`) → `cuMemcpy2D` into the encoder's CUDA frame → NVENC. Frames never touch the CPU. **Copy mode:** NVIDIA refuses `glXCreatePixmap` (BadAlloc) on the backing pixmap of windows rendered via Vulkan/DXVK (Wine/Proton games, Battle.net, Chrome); for those the X server first copies the window into a pixmap we own (`XCopyArea`, a server-side GPU copy) and that pixmap is bound instead. A resize or minimize ends the session; the recorder then starts a new one at the new size. | xdg-desktop-portal ScreenCast (`ashpd`) → PipeWire stream, DMA-BUF when available. Persist the portal **restore token** so the user picks the WoW window only once. |
 | Audio | PipeWire: capture the WoW/Wine app stream node, or the default sink monitor | same |
 | Encoder | NVENC (NVIDIA, via FFmpeg `h264_nvenc` / `hevc_nvenc` / `av1_nvenc` with CUDA hw frames), VAAPI (AMD/Intel) | same |
-| Global hotkey | XGrabKey (`global-hotkey` crate) | GlobalShortcuts portal (KDE Plasma 6, GNOME 48+, Hyprland). Fallback: user binds `chronoclip save` in their desktop settings |
+| Global hotkey | `XGrabKey` on the root window, once per Caps Lock / Num Lock combination; own code in `chronoclip-capture` (`X11Hotkey`) with its own thread and X connection. A key taken by another client (`BadAccess`) is reported in the UI | GlobalShortcuts portal (KDE Plasma 6, GNOME 48+, Hyprland). Fallback: user binds `chronoclip save` in their desktop settings |
 | Tray | Slint `SystemTrayIcon` (StatusNotifierItem); GNOME needs the AppIndicator extension | same |
 | IPC (`chronoclip save`) | Unix socket in `$XDG_RUNTIME_DIR/chronoclip.sock` | same |
 | Notifications | `org.freedesktop.Notifications` | same |
@@ -110,6 +111,35 @@ The UI should show this estimate when the user changes buffer length or quality.
 - X11 + NVIDIA capture: **GLX texture-from-pixmap → shader copy → CUDA interop**. No NvFBC.
 - Libraries (X11, GLX, GL, CUDA) are loaded at runtime with `libloading`/`x11-dl`, so users need no `-dev` packages.
 - Recording uses the CUDA *primary* context, shared by FFmpeg and the capture code.
+
+## Saving a replay
+
+Triggers: the hotkey, the window's **Save replay** button, the tray menu, and `chronoclip save` over IPC (which waits for the result and prints the clip path). All go through `Controller::start_save`; only one save runs at a time, a second request is refused with a message.
+
+1. **Wait for the open segment** (≤ 2 s + slack): the writer reports which segment it is filling; the save waits until that one is finished, so the clip contains the moment the key was pressed. A recording session that ends (window hidden, closed or resized) finishes its segment right away.
+2. **Select and pin:** the newest segments covering the buffer length, oldest first, stopping where the frame size changed (`Segment::stream`), since MP4 holds one set of codec parameters. Segments with `seq >= first` are pinned: pruning still takes them out of the index but defers deleting the files until the save ends, so disk use stays bounded right after.
+3. **Check free space** in the clips folder (`statvfs`): clip size ≈ segment size, plus 5 % or 256 MB headroom.
+4. **Remux** (`chronoclip_encode::remux_to_mp4`): stream copy into `.<name>.mp4.part`, then rename to `Chronoclip_YYYY-MM-DD_HH-MM-SS.mp4` (`_2`, `_3` on collision). The first segment is probed fully for the SPS/PPS; the rest are opened without `avformat_find_stream_info`, which would decode a frame per segment. Timestamps are rebased to start at 0; a file whose timestamps jump back (new encoder session) or more than 1 s forward is attached one frame after the previous packet. `+faststart` puts the `moov` atom first so clips start instantly in browsers and chat apps.
+5. **Unpin**, which deletes segments that were pruned meanwhile, and report the result in the window, the tray tooltip and to the IPC caller.
+
+Stopping the recorder (quit, or a settings change that restarts it) waits for a running save before deleting the buffer.
+
+### Measured (M3, RTX 4080, release build, glxgears 2560×1368 @ 60 fps)
+
+| Clip | Segments | Size | Remux | Press → file ready |
+|---|---|---|---|---|
+| 20 s | 10 | 53 MB | 80 ms | 1.5 s |
+| 5 min (full buffer) | 151 | 816 MB | 0.7 s | 1.3 s |
+
+"Press → file ready" includes the wait for the open segment (0 to 2 s). Clips check out with ffprobe/ffmpeg: exact duration and frame count, every frame 1/60 s apart across all segment joins, one keyframe per segment, full decode without errors, `moov` first. A 45 minute buffer is untested so far; at the 5 minute rate (≈ 1.2 GB/s, files in page cache) it would be ≈ 6 to 7 GB and several seconds.
+
+## Decisions made in M3
+
+- **Global hotkey: own `XGrabKey` code**, not the `global-hotkey` crate: no extra dependency (we already load Xlib), and full control over Caps Lock / Num Lock and over reporting a key that is already taken. Lives in `chronoclip-capture`, the crate that holds the X11 FFI. Wayland will use the GlobalShortcuts portal (M6).
+- **Clips include the moment of the press:** a save waits for the open segment (up to one segment length) instead of saving instantly without the last ≤ 2 s.
+- **One save at a time:** a second request while saving is refused rather than queued.
+- **A clip never spans a resolution change**; segments of separate sessions at the same size are joined, without the gap.
+- **`+faststart`** although it rewrites the file once at the end: compatibility (browsers, Discord) over a few seconds on very long clips.
 
 ## Open questions
 

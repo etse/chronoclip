@@ -13,11 +13,14 @@ chronoclip-core = { path = "crates/chronoclip-core" }
 chronoclip-encode = { path = "crates/chronoclip-encode" }
 chronoclip-capture = { path = "crates/chronoclip-capture" }
 anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 clap = { version = "4", features = ["derive"] }
 directories = "6"
 ffmpeg-next = { version = "8", default-features = false, features = ["codec", "format", "software-scaling"] }
 gl = "0.14"
+libc = "0.2"
 libloading = "0.8"
+rustix = { version = "1", features = ["fs"] }
 serde = { version = "1", features = ["derive"] }
 slint = "1"
 slint-build = "1"

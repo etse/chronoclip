@@ -32,7 +32,7 @@ That's it. Everything else Chronoclip needs is already part of every Linux X11 d
 | Runtime library | Package (Mint / Ubuntu) | Used for |
 |---|---|---|
 | `libcuda.so.1`, `libnvidia-encode.so.1` | part of the NVIDIA driver | GPU copy (CUDA) and encoding (NVENC) |
-| `libX11.so.6`, `libXcomposite.so.1` | `libx11-6`, `libxcomposite1` | Finding and capturing the WoW window |
+| `libX11.so.6`, `libXcomposite.so.1` | `libx11-6`, `libxcomposite1` | Finding and capturing the WoW window, and the global hotkey |
 | `libGL.so.1` (GLX) | `libgl1` | Reading the window image on the GPU |
 | `libavcodec`, `libavformat`, `libavutil` | installed with `ffmpeg` | Encoding and writing video files |
 
@@ -79,13 +79,15 @@ X11, OpenGL/GLX, CUDA and NVENC are loaded at runtime from the libraries your de
 cargo run -p chronoclip
 ```
 
-### 4. Optional: GPU tests
+### 4. Optional: GPU and X11 tests
 
-The capture/encoder tests need an NVIDIA GPU and `glxgears`:
+The capture/encoder tests need an NVIDIA GPU and `glxgears`. The hotkey test grabs a key on your X server and presses it through XTest (`libXtst.so.6`, package `libxtst6`, installed on practically every X11 desktop):
 
 ```sh
-sudo apt install mesa-utils          # provides glxgears
+sudo apt install mesa-utils libxtst6   # glxgears; XTest for the hotkey test
 cargo test --workspace -- --ignored
 ```
+
+The hotkey test briefly grabs `Ctrl+Shift+Super+F10` and `F11`; it fails if another program already uses them.
 
 See [AGENTS.md](AGENTS.md#commands) for test, lint and other commands.

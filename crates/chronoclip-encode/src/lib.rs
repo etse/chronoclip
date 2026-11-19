@@ -1,5 +1,6 @@
-//! FFmpeg wrappers for Chronoclip: an NVENC encoder that takes CUDA frames, and a writer that
-//! splits the encoded stream into keyframe-aligned MPEG-TS segments.
+//! FFmpeg wrappers for Chronoclip: an NVENC encoder that takes CUDA frames, a writer that
+//! splits the encoded stream into keyframe-aligned MPEG-TS segments, and the remux that joins
+//! segments into an MP4 clip.
 //!
 //! All `unsafe` FFmpeg calls are confined to this crate behind safe types.
 
@@ -7,11 +8,13 @@
 
 mod error;
 mod nvenc;
+mod remux;
 mod segment_writer;
 
 pub use error::EncodeError;
 pub use ffmpeg_next::Packet;
 pub use nvenc::{EncoderConfig, HwFrame, NvencEncoder};
+pub use remux::{RemuxStats, remux_to_mp4};
 pub use segment_writer::SegmentWriter;
 
 /// Initialize FFmpeg (idempotent) and route its log output to `tracing` at warning level.

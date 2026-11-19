@@ -3,9 +3,12 @@
 //! Without a subcommand this starts the tray app (or shows the window of an already running
 //! instance). Subcommands talk to the running instance over a Unix socket.
 
+mod buffer;
 mod controller;
+mod hotkey;
 mod ipc;
 mod recorder;
+mod save;
 mod tray;
 mod ui;
 
@@ -126,6 +129,14 @@ fn run_app(hidden: bool) -> anyhow::Result<ExitCode> {
     if let Some(tray) = &tray {
         controller.set_tray(tray.as_weak());
     }
+    controller.set_hotkey_backend(hotkey::GlobalHotkey::start({
+        let controller = Arc::downgrade(&controller);
+        move || {
+            if let Some(controller) = controller.upgrade() {
+                controller.save_replay();
+            }
+        }
+    }));
     controller.apply_settings(&settings);
     ipc::serve(listener, Arc::clone(&controller)).context("could not start IPC thread")?;
 

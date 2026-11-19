@@ -2,15 +2,17 @@
 //!
 //! Threads:
 //! - `recorder`: finds the window, owns the GL context, captures and encodes at the target FPS.
-//! - `writer`: writes packets into segments, keeps the segment index and deletes old segments.
+//! - `writer`: writes packets into segments, adds them to the [`ReplayBuffer`] (which deletes
+//!   old segments).
 //!
 //! They are connected by a bounded channel; if the disk stalls, capture waits (and skips frames)
-//! instead of buffering without limit.
+//! instead of buffering without limit. Saves read the shared [`ReplayBuffer`] from their own
+//! thread.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
-use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -18,7 +20,7 @@ use chronoclip_capture::{
     CaptureError, CaptureStatus, CudaDestination, WindowMatcher, X11WindowCapture, find_window,
 };
 use chronoclip_core::disk::bitrate_bps;
-use chronoclip_core::segments::{SegmentIndex, clean_buffer_dir, retention_for_minutes};
+use chronoclip_core::segments::{clean_buffer_dir, retention_for_minutes};
 use chronoclip_core::settings::EncoderPreference;
 use chronoclip_encode::{EncoderConfig, NvencEncoder, Packet, SegmentWriter};
 use ffmpeg_next::{Rational, codec};
@@ -30,6 +32,10 @@ const CHANNEL_CAPACITY: usize = 256;
 const WINDOW_POLL: Duration = Duration::from_secs(1);
 const ERROR_RETRY: Duration = Duration::from_secs(3);
 const STATUS_INTERVAL: Duration = Duration::from_millis(500);
+/// How long stopping the recorder waits for a running save before deleting the buffer.
+const SAVE_WAIT_ON_STOP: Duration = Duration::from_secs(600);
+
+use crate::buffer::ReplayBuffer;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecorderConfig {
@@ -62,6 +68,7 @@ type StatusFn = dyn Fn(RecorderStatus) + Send + Sync;
 pub struct Recorder {
     stop: Arc<AtomicBool>,
     retention_secs: Arc<AtomicU64>,
+    buffer: Arc<ReplayBuffer>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -71,16 +78,17 @@ impl Recorder {
         on_status: impl Fn(RecorderStatus) + Send + Sync + 'static,
     ) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
-        let retention_secs = Arc::new(AtomicU64::new(
-            retention_for_minutes(config.buffer_minutes).as_secs(),
-        ));
+        let retention = retention_for_minutes(config.buffer_minutes);
+        let retention_secs = Arc::new(AtomicU64::new(retention.as_secs()));
+        let buffer = Arc::new(ReplayBuffer::new(retention));
         let thread = {
             let stop = Arc::clone(&stop);
             let retention_secs = Arc::clone(&retention_secs);
+            let buffer = Arc::clone(&buffer);
             let on_status: Arc<StatusFn> = Arc::new(on_status);
             thread::Builder::new()
                 .name("recorder".into())
-                .spawn(move || run(config, &stop, retention_secs, on_status))
+                .spawn(move || run(config, &stop, retention_secs, &buffer, on_status))
         };
         let thread = thread
             .inspect_err(|e| tracing::error!("could not start recorder thread: {e}"))
@@ -88,8 +96,14 @@ impl Recorder {
         Self {
             stop,
             retention_secs,
+            buffer,
             thread,
         }
+    }
+
+    /// The replay buffer, for saving clips.
+    pub fn buffer(&self) -> Arc<ReplayBuffer> {
+        Arc::clone(&self.buffer)
     }
 
     /// Change the buffer length without interrupting the recording.
@@ -122,20 +136,17 @@ fn sleep_unless_stopped(stop: &AtomicBool, duration: Duration) -> bool {
     stop.load(Ordering::Relaxed)
 }
 
-/// Shared between recorder and writer threads for status reporting.
-#[derive(Default)]
-struct BufferStats {
-    buffered: Duration,
-    bytes: u64,
-}
-
 enum WriterMessage {
     /// A new encoder session started (e.g. after a resize): start a new segment.
     Session {
         params: codec::Parameters,
         time_base: Rational,
+        /// Frame size; segments of the same size can be joined into one clip.
+        size: (u32, u32),
     },
     Packet(Packet),
+    /// The encoder session ended (window closed, hidden or resized): finish the segment.
+    EndSession,
 }
 
 /// `codec::Parameters` is not `Send` in ffmpeg-next, but ours is a plain owned copy of
@@ -149,6 +160,7 @@ fn run(
     config: RecorderConfig,
     stop: &AtomicBool,
     retention_secs: Arc<AtomicU64>,
+    buffer: &Arc<ReplayBuffer>,
     on_status: Arc<StatusFn>,
 ) {
     match clean_buffer_dir(&config.buffer_dir) {
@@ -176,15 +188,14 @@ fn run(
         return;
     }
 
-    let stats = Arc::new(Mutex::new(BufferStats::default()));
     let (sender, receiver) = sync_channel::<SendMessage>(CHANNEL_CAPACITY);
     let writer = {
         let dir = config.buffer_dir.clone();
-        let stats = Arc::clone(&stats);
+        let buffer = Arc::clone(buffer);
         let retention_secs = Arc::clone(&retention_secs);
         thread::Builder::new()
             .name("writer".into())
-            .spawn(move || write_segments(&dir, &receiver, &retention_secs, &stats))
+            .spawn(move || write_segments(&dir, &receiver, &retention_secs, &buffer))
     };
     let writer = match writer {
         Ok(w) => w,
@@ -220,16 +231,19 @@ fn run(
             height = window.height,
             "found window"
         );
-        match record_window(
+        let result = record_window(
             &config,
             window.id,
             (window.width, window.height),
             stop,
             &sender,
-            &stats,
+            buffer,
             &retention_secs,
             on_status.as_ref(),
-        ) {
+        );
+        // Close the open segment so it can be saved while no window is recorded.
+        let _ = sender.send(SendMessage(WriterMessage::EndSession));
+        match result {
             Ok(()) => {}
             Err(e) => {
                 tracing::warn!("recording stopped: {e}");
@@ -243,6 +257,11 @@ fn run(
     if writer.join().is_err() {
         tracing::error!("writer thread panicked");
     }
+    // A save in progress reads the segments; let it finish before deleting them.
+    if !buffer.wait_until_unpinned(SAVE_WAIT_ON_STOP) {
+        tracing::warn!("a save is still running; deleting the buffer anyway");
+    }
+    buffer.clear();
     match clean_buffer_dir(&config.buffer_dir) {
         Ok(n) => tracing::info!("recorder stopped, deleted {n} buffer segments"),
         Err(e) => tracing::warn!("could not clean buffer folder: {e}"),
@@ -259,7 +278,7 @@ fn record_window(
     (width, height): (u32, u32),
     stop: &AtomicBool,
     sender: &SyncSender<SendMessage>,
-    stats: &Mutex<BufferStats>,
+    buffer: &ReplayBuffer,
     retention_secs: &AtomicU64,
     on_status: &StatusFn,
 ) -> Result<(), String> {
@@ -286,6 +305,7 @@ fn record_window(
     send(WriterMessage::Session {
         params,
         time_base: encoder.time_base(),
+        size: (width, height),
     })?;
 
     let interval = Duration::from_secs(1) / fps;
@@ -342,14 +362,14 @@ fn record_window(
 
         if last_status.elapsed() >= STATUS_INTERVAL {
             last_status = Instant::now();
-            let stats = stats.lock().unwrap_or_else(|e| e.into_inner());
+            let (buffered, bytes) = buffer.stats();
             on_status(RecorderStatus::Recording {
                 width,
                 height,
                 fps,
-                buffered: stats.buffered,
+                buffered,
                 retention: Duration::from_secs(retention_secs.load(Ordering::Relaxed)),
-                bytes: stats.bytes,
+                bytes,
                 skipped_frames: skipped,
             });
         }
@@ -374,64 +394,72 @@ fn write_segments(
     dir: &std::path::Path,
     receiver: &Receiver<SendMessage>,
     retention_secs: &AtomicU64,
-    stats: &Mutex<BufferStats>,
+    buffer: &ReplayBuffer,
 ) {
-    let mut index = SegmentIndex::new(Duration::from_secs(retention_secs.load(Ordering::Relaxed)));
     let mut writer: Option<SegmentWriter> = None;
     let mut next_seq = 0;
+    // Stream id and frame size of the current session; a new size starts a new stream.
+    let mut stream: Option<(u64, (u32, u32))> = None;
 
-    let finish_segment = |index: &mut SegmentIndex, segment| {
-        let retention = Duration::from_secs(retention_secs.load(Ordering::Relaxed));
-        let mut removed = if retention != index.retention() {
-            index.set_retention(retention)
-        } else {
-            Vec::new()
-        };
-        removed.extend(index.push(segment));
-        for old in removed {
-            if let Err(e) = std::fs::remove_file(&old.path) {
-                tracing::warn!("could not delete {}: {e}", old.path.display());
-            }
+    let finish = |writer: &mut SegmentWriter| {
+        match writer.finish() {
+            Ok(Some(segment)) => buffer.add_segment(
+                segment,
+                Duration::from_secs(retention_secs.load(Ordering::Relaxed)),
+            ),
+            Ok(None) => {}
+            Err(e) => tracing::warn!("could not finish segment: {e}"),
         }
-        let mut stats = stats.lock().unwrap_or_else(|e| e.into_inner());
-        stats.buffered = index.total_duration();
-        stats.bytes = index.total_bytes();
+        buffer.set_open_segment(None);
     };
 
     while let Ok(SendMessage(message)) = receiver.recv() {
         match message {
-            WriterMessage::Session { params, time_base } => {
+            WriterMessage::Session {
+                params,
+                time_base,
+                size,
+            } => {
                 if let Some(mut old) = writer.take() {
-                    match old.finish() {
-                        Ok(Some(segment)) => finish_segment(&mut index, segment),
-                        Ok(None) => {}
-                        Err(e) => tracing::warn!("could not finish segment: {e}"),
-                    }
+                    finish(&mut old);
                     next_seq = old.next_seq();
                 }
+                let id = match stream {
+                    Some((id, old_size)) if old_size == size => id,
+                    Some((id, _)) => id + 1,
+                    None => 0,
+                };
+                stream = Some((id, size));
                 writer = Some(SegmentWriter::new(
                     dir,
                     params,
                     time_base,
                     Duration::from_secs(SEGMENT_SECONDS.into()),
+                    id,
                     next_seq,
                 ));
             }
             WriterMessage::Packet(packet) => {
                 let Some(w) = writer.as_mut() else { continue };
                 match w.write(packet) {
-                    Ok(Some(segment)) => finish_segment(&mut index, segment),
+                    Ok(Some(segment)) => buffer.add_segment(
+                        segment,
+                        Duration::from_secs(retention_secs.load(Ordering::Relaxed)),
+                    ),
                     Ok(None) => {}
                     Err(e) => tracing::warn!("could not write packet: {e}"),
+                }
+                buffer.set_open_segment(w.current_seq());
+            }
+            WriterMessage::EndSession => {
+                if let Some(w) = writer.as_mut() {
+                    finish(w);
                 }
             }
         }
     }
-    if let Some(mut w) = writer
-        && let Ok(Some(segment)) = w.finish()
-    {
-        finish_segment(&mut index, segment);
+    if let Some(mut w) = writer {
+        finish(&mut w);
     }
-    // Files are deleted by the recorder thread (clean_buffer_dir) after we exit.
-    let _ = index.clear();
+    // The recorder thread deletes the files (clean_buffer_dir) after we exit.
 }

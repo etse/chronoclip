@@ -769,13 +769,16 @@ name = "chronoclip"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "chronoclip-capture",
  "chronoclip-core",
  "chronoclip-encode",
  "clap",
  "ffmpeg-next",
+ "rustix 1.1.6",
  "slint",
  "slint-build",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
 ]
@@ -784,8 +787,10 @@ dependencies = [
 name = "chronoclip-capture"
 version = "0.1.0"
 dependencies = [
+ "chronoclip-core",
  "chronoclip-encode",
  "gl",
+ "libc",
  "libloading",
  "tempfile",
  "thiserror 2.0.21",
@@ -798,6 +803,7 @@ dependencies = [
 name = "chronoclip-core"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "directories",
  "serde",
  "tempfile",
