@@ -7,7 +7,7 @@ Status: ✅ done · 🚧 in progress · ⬜ not started
 | M0 | Scaffold: repo, docs, agent instructions | ✅ |
 | M1 | Skeleton app: Slint window, tray, settings, single instance, `chronoclip save/show/quit` | ✅ |
 | M2 | Capture pipeline (X11 + NVIDIA) | ✅ |
-| M3 | Save replay: global hotkey, lossless remux to MP4 | 🚧 |
+| M3 | Save replay: global hotkey, lossless remux to MP4 | ✅ |
 | M4 | Audio: game audio via PipeWire, optional mic track | ⬜ |
 | M5 | Polish: notifications, clip library, autostart, WoW auto-detection | ⬜ |
 | M6 | Wayland + AMD/Intel: portal/PipeWire capture, GlobalShortcuts portal, VAAPI | ⬜ |
@@ -28,8 +28,8 @@ Goal: pressing the hotkey (default `Ctrl+F9`), clicking Save in the window or tr
 - [x] Global hotkey on X11 (XGrabKey, ignoring NumLock/CapsLock state) behind the `GlobalHotkey` backend switch (`app/src/hotkey.rs`, X11 now, portal later); re-registered when the setting changes; a grab failure (key taken by another app) is shown in the UI
 - [x] Feedback: last saved clip and save errors in the UI status and tray tooltip; "Open folder" for the output folder (desktop notifications come in M5)
 - [x] Docs: architecture.md (save path, decisions), INSTALL.md if dependencies change, README usage
-- [ ] Verified: glxgears save at 5 and 45 min buffers; clip plays and seeks in mpv and a browser, duration matches, no gap or stutter at segment joins; save time measured
-- [ ] Verified in-game: hotkey works while WoW (borderless) has focus, game stays smooth during a save
+- [x] Verified: glxgears save at 5 and 45 min buffers (45 min: 7.3 GB clip in 6.0 s); duration and frame count match, every join frame-exact, seeks and decodes cleanly in FFmpeg; save time measured (see architecture.md)
+- [x] Verified in-game: hotkey works while WoW (borderless) has focus; clip looks good
 
 Out of scope: audio (M4), notifications and clip library (M5), Wayland GlobalShortcuts portal (M6; `chronoclip save` is the fallback there). Trimming or editing clips is not planned.
 

@@ -130,8 +130,9 @@ Stopping the recorder (quit, or a settings change that restarts it) waits for a 
 |---|---|---|---|---|
 | 20 s | 10 | 53 MB | 80 ms | 1.5 s |
 | 5 min (full buffer) | 151 | 816 MB | 0.7 s | 1.3 s |
+| 45 min (full buffer) | 1350 | 7.3 GB | 5.6 s | 6.0 s |
 
-"Press → file ready" includes the wait for the open segment (0 to 2 s). Clips check out with ffprobe/ffmpeg: exact duration and frame count, every frame 1/60 s apart across all segment joins, one keyframe per segment, full decode without errors, `moov` first. A 45 minute buffer is untested so far; at the 5 minute rate (≈ 1.2 GB/s, files in page cache) it would be ≈ 6 to 7 GB and several seconds.
+"Press → file ready" includes the wait for the open segment (0 to 2 s). Clips check out with ffprobe/ffmpeg: exact duration and frame count, every frame 1/60 s apart across all segment joins, one keyframe per segment, full decode without errors, `moov` first. The buffer stays bounded (1351 segments, 7.1 GB for 45 min) and is deleted on quit. Segments were still in the page cache (64 GB RAM), so the remux ran at ≈ 1.3 GB/s; from a cold cache it is bounded by the disk.
 
 ## Decisions made in M3
 

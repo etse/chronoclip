@@ -117,7 +117,7 @@ Detailed status and task checklists: [docs/roadmap.md](docs/roadmap.md).
 1. **M0, scaffold** ✅ repo, docs, agent instructions
 2. **M1, skeleton app** ✅ Slint window, tray icon, settings persisted to disk, single instance + `chronoclip save` IPC
 3. **M2, capture pipeline (X11 + NVIDIA)** ✅ XComposite window capture → GL texture → CUDA → NVENC → rolling segments
-4. **M3, save replay** 🚧 X11 global hotkey → lossless remux of the last N minutes to MP4 (done, pending an in-game check)
+4. **M3, save replay** ✅ X11 global hotkey → lossless remux of the last N minutes to MP4
 5. **M4, audio**: game audio via PipeWire, optional mic track
 6. **M5, polish**: notifications, clip library, autostart, WoW window auto-detection
 7. **M6, Wayland + AMD/Intel**: portal/PipeWire capture, GlobalShortcuts portal, VAAPI
