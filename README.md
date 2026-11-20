@@ -6,22 +6,63 @@ Chronoclip continuously records your gameplay to a rolling buffer on disk. When 
 
 > **Status:** 🚧 Pre-alpha. Recording and saving replays work on X11 with an NVIDIA GPU (video only; audio is next). See [Roadmap](#roadmap).
 
+<p align="center">
+  <img src="docs/images/chronoclip-window.png" alt="The Chronoclip window: recording status, a Save replay button, the last saved clip, and settings for buffer length, frame rate, encoder, hotkey and folders" width="560">
+</p>
+
+## What it is
+
+Chronoclip is a **replay buffer**, like a dashcam for your game. You never have to remember to press "record" before the good part happens:
+
+1. **It is always recording.** While WoW runs, Chronoclip records the game window in the background and keeps the last *N* minutes (5 to 45, default 10) on disk. Anything older is deleted automatically, so the buffer never grows.
+2. **You decide afterwards what to keep.** Something great just happened? Press `Ctrl+F9`. The last *N* minutes are saved as an MP4 in `~/Videos/Chronoclip`, ready to watch, trim or share on Discord.
+3. **Everything else is thrown away.** No hours of footage to sort through, no full disk.
+
+### Using it
+
+- Start Chronoclip once; it sits in the system tray. Closing the window keeps it recording in the background.
+- Start WoW as usual (Faugus, Lutris, Steam/Proton, …). Chronoclip finds the WoW window by itself and starts recording; the tray tooltip and the window show the status.
+- Press the hotkey (or click **Save replay** in the window or tray menu, or run `chronoclip save`). A few seconds later the clip is in your clips folder.
+
+### What it costs
+
+Recording uses the GPU's video encoder (NVENC), so the game barely notices. Frames stay on the GPU from capture to encoder.
+
+| | Measured at 2560×1368 @ 60 fps, RTX 4080 |
+|---|---|
+| CPU | about 2 % of one core |
+| GPU / video encoder | about 8 % / 9 % |
+| Disk | about 1.5 GB per 10 minutes of buffer at 1080p60, 7 GB for 45 minutes at 1440p |
+| Saving | 1 to 2 s for a short clip, 6 s for a full 45 minute buffer (no re-encoding) |
+
+### Safe for your account
+
+Chronoclip only reads what your desktop already shows on screen, through the X server's official compositing API (and later the Wayland screen-sharing portal). It **never** injects into, hooks, or reads the memory of the game process, and it sends nothing over the network.
+
 ## Why
 
 Windows players have ShadowPlay, ReLive, Medal and friends. On Linux the options are either general-purpose (OBS) or CLI-first. Chronoclip is a small, focused, native desktop app for one job: *always be recording WoW, save the good bits with one key*. It is built by a Linux WoW player for their own use and shared in case it is useful to others.
 
-## Features (planned)
+## Features
 
-- **Always-on replay buffer**: records continuously to a buffer directory and discards old footage automatically.
-- **Save on hotkey**: a configurable global hotkey (default `Ctrl+F9`) saves the buffered footage. Works on X11 and on Wayland (via the GlobalShortcuts portal).
+Works today (X11 + NVIDIA):
+
+- **Always-on replay buffer** on disk, oldest footage deleted automatically, cleaned up on exit.
+- **Save on hotkey**: a configurable global hotkey (default `Ctrl+F9`) that works while the game has focus, plus a Save button, tray menu and `chronoclip save` CLI command.
 - **Configurable buffer length**: from **5 to 45 minutes** (default **10**).
-- **Instant saves**: saving remuxes already-encoded segments into an MP4 with no re-encoding, so it takes seconds, not minutes.
-- **Hardware encoding**: VAAPI (AMD / Intel) and NVENC (NVIDIA).
-- **Game + optional microphone audio** via PipeWire.
+- **Instant saves**: saving joins the already-encoded segments into an MP4 without re-encoding, so it takes seconds, not minutes.
+- **Hardware encoding** with NVENC, GPU-only capture path.
+- **Finds the WoW window by itself** (Wine / Proton `Wow.exe`).
 - **Fully native and lightweight**: Rust all the way down, native UI with [Slint](https://slint.dev). No Electron, no webview.
-- **X11 and Wayland**: X11 first (Linux Mint, and others), Wayland via portals.
-- **Safe for your account**: captures through the desktop's official screen-capture APIs. Chronoclip **never** injects into, hooks, or reads the memory of the game process.
-- **Tray app** that keeps recording when the window is closed, plus a `chronoclip save` CLI command.
+- **Tray app** that keeps recording when the window is closed.
+
+Planned (see [Roadmap](#roadmap)):
+
+- **Game + optional microphone audio** via PipeWire.
+- **Notifications** when a clip is saved, a clip library, autostart.
+- **Wayland** (screen capture and hotkey through portals) and **AMD / Intel** GPUs (VAAPI).
+- **Packages**: .deb, AppImage, Flatpak, AUR.
+- **Other games** besides WoW.
 
 ## Tech stack
 
