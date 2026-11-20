@@ -257,6 +257,8 @@ impl Controller {
             buffer_minutes: settings.buffer_minutes,
             fps: settings.fps,
             encoder: settings.encoder,
+            audio: settings.audio,
+            microphone: settings.microphone,
             matcher: match std::env::var(WINDOW_ENV) {
                 Ok(title) if !title.is_empty() => WindowMatcher::TitleContains(title),
                 _ => WindowMatcher::WorldOfWarcraft,
@@ -323,6 +325,7 @@ fn status_text(status: &RecorderStatus, matcher: &WindowMatcher) -> (String, boo
             retention,
             bytes,
             skipped_frames,
+            audio,
         } => {
             let mut text = format!(
                 "Recording {width}×{height} @ {fps} fps · buffer {} / {} · {}",
@@ -333,6 +336,10 @@ fn status_text(status: &RecorderStatus, matcher: &WindowMatcher) -> (String, boo
             if *skipped_frames > 0 {
                 let s = if *skipped_frames == 1 { "" } else { "s" };
                 text.push_str(&format!(" · {skipped_frames} frame{s} skipped"));
+            }
+            if let Some(audio) = audio {
+                text.push_str(" · ");
+                text.push_str(audio);
             }
             (text, true)
         }

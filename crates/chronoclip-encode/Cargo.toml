@@ -1,6 +1,6 @@
 [package]
 name = "chronoclip-encode"
-description = "FFmpeg wrappers for Chronoclip: NVENC encoder and MPEG-TS segment writer."
+description = "FFmpeg wrappers for Chronoclip: NVENC and AAC encoders, MPEG-TS segment writer, MP4 remux."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

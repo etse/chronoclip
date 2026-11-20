@@ -6,7 +6,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use chronoclip_core::segments::Segment;
-use chronoclip_encode::{EncoderConfig, NvencEncoder, SegmentWriter, remux_to_mp4};
+use chronoclip_encode::{
+    AacEncoder, EncoderConfig, NvencEncoder, SegmentWriter, StreamConfig, remux_to_mp4,
+};
 
 const W: u32 = 1280;
 const H: u32 = 720;
@@ -48,8 +50,10 @@ fn encodes_keyframe_aligned_segments() -> Result<(), Box<dyn std::error::Error>>
 
     let mut writer = SegmentWriter::new(
         &dir,
-        encoder.parameters()?,
-        encoder.time_base(),
+        vec![StreamConfig {
+            params: encoder.parameters()?,
+            time_base: encoder.time_base(),
+        }],
         Duration::from_secs(2),
         0,
         0,
@@ -62,12 +66,12 @@ fn encodes_keyframe_aligned_segments() -> Result<(), Box<dyn std::error::Error>>
         let frame = encoder.upload_rgb0(&test_image(n), (W * 4) as usize)?;
         encoder.encode(Some((frame, i64::from(n))), &mut packets)?;
         for p in packets.drain(..) {
-            segments.extend(writer.write(p)?);
+            segments.extend(writer.write(p, 0)?);
         }
     }
     encoder.encode(None, &mut packets)?;
     for p in packets.drain(..) {
-        segments.extend(writer.write(p)?);
+        segments.extend(writer.write(p, 0)?);
     }
     segments.extend(writer.finish()?);
 
@@ -115,11 +119,13 @@ fn encodes_keyframe_aligned_segments() -> Result<(), Box<dyn std::error::Error>>
 }
 
 /// Encode `frames` frames in a fresh encoder session (timestamps start at 0 again), like the
-/// recorder does after the window was hidden and shown.
+/// recorder does after the window was hidden and shown. With `audio`, a second stream holds a
+/// 440 Hz tone for the first 100 ms of every second.
 fn encode_session(
     dir: &std::path::Path,
     first_seq: u64,
     frames: u32,
+    audio: bool,
 ) -> Result<Vec<Segment>, Box<dyn std::error::Error>> {
     let mut encoder = NvencEncoder::new(EncoderConfig {
         width: W,
@@ -128,26 +134,52 @@ fn encode_session(
         bitrate_bps: 8_000_000,
         gop_frames: 2 * FPS,
     })?;
-    let mut writer = SegmentWriter::new(
-        dir,
-        encoder.parameters()?,
-        encoder.time_base(),
-        Duration::from_secs(2),
-        0,
-        first_seq,
-    );
+    let mut streams = vec![StreamConfig {
+        params: encoder.parameters()?,
+        time_base: encoder.time_base(),
+    }];
+    let mut aac = if audio {
+        let aac = AacEncoder::new()?;
+        streams.push(StreamConfig {
+            params: aac.parameters(),
+            time_base: aac.time_base(),
+        });
+        Some(aac)
+    } else {
+        None
+    };
+    let mut writer = SegmentWriter::new(dir, streams, Duration::from_secs(2), 0, first_seq);
     let mut segments = Vec::new();
     let mut packets = Vec::new();
+    let samples_per_frame = (48_000 / FPS) as usize;
+    let mut samples = Vec::new();
     for n in 0..frames {
         let frame = encoder.upload_rgb0(&test_image(n), (W * 4) as usize)?;
         encoder.encode(Some((frame, i64::from(n))), &mut packets)?;
         for p in packets.drain(..) {
-            segments.extend(writer.write(p)?);
+            segments.extend(writer.write(p, 0)?);
+        }
+        if let Some(aac) = &mut aac {
+            samples.clear();
+            for i in 0..samples_per_frame {
+                let t = (n as usize * samples_per_frame + i) as f32 / 48_000.0;
+                let beep = t.fract() < 0.1;
+                let s = if beep {
+                    (t * 440.0 * std::f32::consts::TAU).sin() * 0.3
+                } else {
+                    0.0
+                };
+                samples.extend([s, s]);
+            }
+            aac.push(&samples, &mut packets)?;
+            for p in packets.drain(..) {
+                segments.extend(writer.write(p, 1)?);
+            }
         }
     }
     encoder.encode(None, &mut packets)?;
     for p in packets.drain(..) {
-        segments.extend(writer.write(p)?);
+        segments.extend(writer.write(p, 0)?);
     }
     segments.extend(writer.finish()?);
     Ok(segments)
@@ -163,13 +195,13 @@ fn remuxes_segments_into_one_mp4() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&dir)?;
 
     // 5 s, then a second session of 3 s whose timestamps restart at 0.
-    let mut segments = encode_session(&dir, 0, 5 * FPS)?;
+    let mut segments = encode_session(&dir, 0, 5 * FPS, false)?;
     let next = segments.last().map_or(0, |s| s.seq + 1);
-    segments.extend(encode_session(&dir, next, 3 * FPS)?);
+    segments.extend(encode_session(&dir, next, 3 * FPS, false)?);
     let paths: Vec<PathBuf> = segments.iter().map(|s| s.path.clone()).collect();
 
     let clip = dir.join("clip.mp4");
-    let stats = remux_to_mp4(&paths, &clip)?;
+    let stats = remux_to_mp4(&paths, &clip, &[])?;
     eprintln!("remuxed {} segments: {stats:?}", paths.len());
     assert_eq!(stats.skipped_segments, 0);
     assert_eq!(stats.bytes, std::fs::metadata(&clip)?.len());
@@ -229,5 +261,66 @@ fn remuxes_segments_into_one_mp4() -> Result<(), Box<dyn std::error::Error>> {
         last.abs_diff(Duration::from_millis(7_983)) < Duration::from_millis(20),
         "{last:?}"
     );
+    Ok(())
+}
+
+#[test]
+#[ignore = "needs an NVIDIA GPU with NVENC"]
+fn remuxes_video_with_audio_in_sync() -> Result<(), Box<dyn std::error::Error>> {
+    let tmp = tempfile::tempdir()?;
+    let dir = std::env::var_os("CHRONOCLIP_TEST_OUT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| tmp.path().to_owned());
+    std::fs::create_dir_all(&dir)?;
+
+    // 5 s, then a second session of 3 s whose timestamps (video and audio) restart at 0.
+    let mut segments = encode_session(&dir, 0, 5 * FPS, true)?;
+    let next = segments.last().map_or(0, |s| s.seq + 1);
+    segments.extend(encode_session(&dir, next, 3 * FPS, true)?);
+    let paths: Vec<PathBuf> = segments.iter().map(|s| s.path.clone()).collect();
+
+    let clip = dir.join("clip_audio.mp4");
+    let stats = remux_to_mp4(&paths, &clip, &["Game".to_owned()])?;
+    eprintln!("remuxed {} segments with audio: {stats:?}", paths.len());
+    assert_eq!(stats.skipped_segments, 0);
+
+    let mut input = ffmpeg_next::format::input(&clip)?;
+    let audio = input
+        .streams()
+        .best(ffmpeg_next::media::Type::Audio)
+        .ok_or("no audio stream")?;
+    assert_eq!(audio.parameters().id(), ffmpeg_next::codec::Id::AAC);
+    assert_eq!(audio.metadata().get("handler_name"), Some("Game"));
+    let (index, time_base) = (audio.index(), audio.time_base());
+    let seconds =
+        |ts: i64| ts as f64 * f64::from(time_base.numerator()) / f64::from(time_base.denominator());
+    let mut first = None;
+    let mut last = None;
+    let mut gaps = 0;
+    for (st, packet) in input.packets() {
+        if st.index() != index {
+            continue;
+        }
+        let pts = packet.pts().ok_or("audio packet without pts")?;
+        if let Some(previous) = last {
+            assert!(pts > previous, "audio pts not increasing");
+            // AAC packets are 1024 samples apart; more is a hole in the track.
+            if seconds(pts - previous) > 1.5 * 1024.0 / 48_000.0 {
+                gaps += 1;
+            }
+        }
+        first.get_or_insert(pts);
+        last = Some(pts);
+    }
+    let (first, last) = (
+        seconds(first.ok_or("no audio")?),
+        seconds(last.ok_or("no audio")?),
+    );
+    eprintln!("audio from {first:.3} s to {last:.3} s, {gaps} gaps");
+    // The audio starts with the video (priming packets before 0 are cut) and runs to the end.
+    assert!(first < 0.05, "audio starts at {first}");
+    assert!((last - 8.0).abs() < 0.1, "audio ends at {last}");
+    // At most one small hole where the second session starts.
+    assert!(gaps <= 1, "{gaps} gaps");
     Ok(())
 }

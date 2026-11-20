@@ -17,7 +17,8 @@ This file lists **everything you need to install**, for:
 |---|---|---|
 | **X11 session** | Window capture and the hotkey use X11 (Wayland support is planned). Linux Mint Cinnamon, MATE and Xfce use X11 by default. | `echo $XDG_SESSION_TYPE` prints `x11` |
 | **NVIDIA GPU + proprietary driver** (535 or newer) | Hardware video encoding (NVENC) and GPU capture (CUDA). AMD/Intel support is planned. | `nvidia-smi` shows your GPU |
-| **FFmpeg libraries** (version 6 or newer) | Video encoding and file writing | `ffmpeg -hide_banner -encoders \| grep h264_nvenc` |
+| **FFmpeg libraries** (version 6 or newer) | Video and audio encoding and file writing | `ffmpeg -hide_banner -encoders \| grep h264_nvenc` |
+| **PipeWire** (with `pipewire-pulse`) or **PulseAudio** | Recording game sound and the microphone. Default on Linux Mint 22 / Ubuntu 24.04 and practically every desktop. Without it, clips have a silent audio track. | `pactl info` prints a `Server Name` |
 
 ### Install (Linux Mint / Ubuntu)
 
@@ -35,11 +36,13 @@ That's it. Everything else Chronoclip needs is already part of every Linux X11 d
 | `libX11.so.6`, `libXcomposite.so.1` | `libx11-6`, `libxcomposite1` | Finding and capturing the WoW window, and the global hotkey |
 | `libGL.so.1` (GLX) | `libgl1` | Reading the window image on the GPU |
 | `libavcodec`, `libavformat`, `libavutil` | installed with `ffmpeg` | Encoding and writing video files |
+| `libpulse.so.0` | `libpulse0` (installed with PipeWire's `pipewire-pulse` or PulseAudio) | Recording sound through the PulseAudio API, which PipeWire provides |
 
 | | Mint / Ubuntu / Debian | Arch | Fedora |
 |---|---|---|---|
 | FFmpeg libraries | `ffmpeg` | `ffmpeg` | `ffmpeg-libs` (RPM Fusion) |
 | NVIDIA driver | Driver Manager / `nvidia-driver-XXX` | `nvidia` | `akmod-nvidia` (RPM Fusion) |
+| Sound (PulseAudio API) | `pipewire-pulse` (default) | `pipewire-pulse` | `pipewire-pulseaudio` (default) |
 
 ---
 
@@ -71,7 +74,7 @@ sudo apt install pkg-config clang libclang-dev \
 | `libxkbcommon-dev` | `libxkbcommon` | Keyboard handling for the Slint UI |
 | `libavcodec-dev`, `libavformat-dev`, `libavutil-dev`, `libswscale-dev` | `ffmpeg` | FFmpeg headers: encoding and muxing |
 
-X11, OpenGL/GLX, CUDA and NVENC are loaded at runtime from the libraries your desktop and NVIDIA driver already provide, so they need **no** `-dev` packages.
+X11, OpenGL/GLX, CUDA, NVENC and libpulse are loaded at runtime from the libraries your desktop and NVIDIA driver already provide, so they need **no** `-dev` packages.
 
 ### 3. Build and run
 
@@ -81,10 +84,10 @@ cargo run -p chronoclip
 
 ### 4. Optional: GPU and X11 tests
 
-The capture/encoder tests need an NVIDIA GPU and `glxgears`. The hotkey test grabs a key on your X server and presses it through XTest (`libXtst.so.6`, package `libxtst6`, installed on practically every X11 desktop):
+The capture/encoder tests need an NVIDIA GPU and `glxgears`. The hotkey test grabs a key on your X server and presses it through XTest (`libXtst.so.6`, package `libxtst6`, installed on practically every X11 desktop). The audio test plays a quiet tone with `paplay` (package `pulseaudio-utils`) made with the `ffmpeg` command line tool, and records it:
 
 ```sh
-sudo apt install mesa-utils libxtst6   # glxgears; XTest for the hotkey test
+sudo apt install mesa-utils libxtst6 pulseaudio-utils   # glxgears; XTest; paplay
 cargo test --workspace -- --ignored
 ```
 

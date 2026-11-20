@@ -83,7 +83,7 @@ pub fn find_window(matcher: &WindowMatcher) -> Result<Option<WindowInfo>, Captur
 
 /// Wine/Proton set the process name to the Windows executable (`/proc/<pid>/comm` is
 /// truncated to 15 bytes, so also check the command line).
-fn process_is_wow(pid: u32) -> bool {
+pub(crate) fn process_is_wow(pid: u32) -> bool {
     let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
     if is_wow_executable(comm.trim()) {
         return true;

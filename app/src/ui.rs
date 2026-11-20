@@ -9,7 +9,9 @@ use chronoclip_core::Paths;
 use chronoclip_core::disk::{
     estimate_buffer_bytes, format_gb, nominal_bitrate_mbps, tmpfs_warning,
 };
-use chronoclip_core::settings::{DEFAULT_FPS, EncoderPreference, SUPPORTED_FPS, Settings};
+use chronoclip_core::settings::{
+    AudioMode, DEFAULT_FPS, EncoderPreference, SUPPORTED_FPS, Settings,
+};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use crate::controller::Controller;
@@ -36,6 +38,20 @@ fn encoder_from_label(label: &str) -> Option<EncoderPreference> {
         .find(|e| encoder_label(*e) == label)
 }
 
+fn audio_label(audio: AudioMode) -> &'static str {
+    match audio {
+        AudioMode::Game => "Game only",
+        AudioMode::All => "All sound",
+        AudioMode::Off => "Off",
+    }
+}
+
+fn audio_from_label(label: &str) -> Option<AudioMode> {
+    AudioMode::ALL
+        .into_iter()
+        .find(|a| audio_label(*a) == label)
+}
+
 fn string_model(items: impl IntoIterator<Item = String>) -> ModelRc<SharedString> {
     let items: Vec<SharedString> = items.into_iter().map(Into::into).collect();
     ModelRc::new(VecModel::from(items))
@@ -51,6 +67,9 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
         EncoderPreference::ALL
             .iter()
             .map(|e| encoder_label(*e).to_owned()),
+    ));
+    window.set_audio_options(string_model(
+        AudioMode::ALL.iter().map(|a| audio_label(*a).to_owned()),
     ));
     show_settings(window, settings, &paths);
 
@@ -140,6 +159,7 @@ fn show_settings(window: &MainWindow, settings: &Settings, paths: &Paths) {
     window.set_buffer_minutes(settings.buffer_minutes as f32);
     window.set_fps(settings.fps.to_string().into());
     window.set_encoder(encoder_label(settings.encoder).into());
+    window.set_audio(audio_label(settings.audio).into());
     window.set_microphone(settings.microphone);
     window.set_buffer_dir(paths.contract_home(&settings.buffer_dir(paths)).into());
     window.set_output_dir(paths.contract_home(&settings.output_dir(paths)).into());
@@ -157,12 +177,15 @@ fn read_settings(window: &MainWindow, paths: &Paths) -> Result<Settings, String>
         .map_err(|_| format!("Invalid frame rate `{}`.", window.get_fps()))?;
     let encoder = encoder_from_label(&window.get_encoder())
         .ok_or_else(|| format!("Unknown encoder `{}`.", window.get_encoder()))?;
+    let audio = audio_from_label(&window.get_audio())
+        .ok_or_else(|| format!("Unknown sound setting `{}`.", window.get_audio()))?;
 
     let settings = Settings {
         hotkey,
         buffer_minutes: window.get_buffer_minutes().round() as u32,
         fps,
         encoder,
+        audio,
         microphone: window.get_microphone(),
         buffer_dir: dir_setting(&window.get_buffer_dir(), &paths.default_buffer_dir, paths),
         output_dir: dir_setting(&window.get_output_dir(), &paths.default_output_dir, paths),

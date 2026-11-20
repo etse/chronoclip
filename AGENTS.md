@@ -36,7 +36,7 @@ Read before making non-trivial changes:
 - **FFmpeg** (libav*, LGPL, dynamically linked) for encoding (VAAPI, NVENC) and muxing.
 - **X11** (first): XComposite window capture → GLX texture-from-pixmap → CUDA interop → NVENC, XGrabKey hotkeys.
 - **Wayland** (later): xdg-desktop-portal (ScreenCast, GlobalShortcuts) via `ashpd` + PipeWire.
-- **PipeWire** for audio on both.
+- **PipeWire** for audio on both, through its PulseAudio API (`libpulse`, loaded at runtime; per-application capture with monitor streams).
 
 ## Repository layout (target)
 
@@ -46,15 +46,15 @@ Read before making non-trivial changes:
 │   └── ui/                    # Slint UI files (*.slint), presentation only
 ├── crates/
 │   ├── chronoclip-core/       # Pure logic: settings, hotkeys, segment index, paths, IPC protocol
-│   ├── chronoclip-capture/    # X11: window finding, capture (XComposite → GLX → CUDA), hotkey grab; Wayland later
-│   └── chronoclip-encode/     # FFmpeg: NVENC encoder (CUDA frames), MPEG-TS segment writer, MP4 remux
+│   ├── chronoclip-capture/    # X11: window finding, capture (XComposite → GLX → CUDA), hotkey grab; audio (libpulse); Wayland later
+│   └── chronoclip-encode/     # FFmpeg: NVENC encoder (CUDA frames), AAC encoder, MPEG-TS segment writer, MP4 remux
 ├── docs/
 │   ├── architecture.md
 │   └── adr/
 └── AGENTS.md
 ```
 
-Inside `app/src/`: `main.rs` (CLI + startup), `controller.rs` (handles commands from UI/tray/IPC/hotkey on any thread, owns the recorder and the hotkey, starts saves), `recorder.rs` (capture/encode thread + writer thread), `buffer.rs` (`ReplayBuffer`: segment index shared by the writer and saves, pinning), `save.rs` (one save: pick segments → remux → MP4), `hotkey.rs` (picks the global hotkey backend for the session), `ui.rs` (Slint ↔ settings glue), `ipc.rs` (Unix socket, single instance), `tray.rs` (wires Slint's built-in `SystemTrayIcon`, defined in `ui/tray.slint`).
+Inside `app/src/`: `main.rs` (CLI + startup), `controller.rs` (handles commands from UI/tray/IPC/hotkey on any thread, owns the recorder and the hotkey, starts saves), `recorder.rs` (capture/encode thread + writer thread), `audio.rs` (audio tracks: capture → timeline → AAC, aligned to the video session clock), `buffer.rs` (`ReplayBuffer`: segment index shared by the writer and saves, pinning), `save.rs` (one save: pick segments → remux → MP4), `hotkey.rs` (picks the global hotkey backend for the session), `ui.rs` (Slint ↔ settings glue), `ipc.rs` (Unix socket, single instance), `tray.rs` (wires Slint's built-in `SystemTrayIcon`, defined in `ui/tray.slint`).
 
 ## Commands
 
@@ -68,10 +68,10 @@ CHRONOCLIP_WINDOW=glxgears cargo run -p chronoclip   # record any window by titl
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo test --workspace -- --ignored   # GPU/X11 tests: need X11, NVIDIA and glxgears; the hotkey test presses keys via XTest
+cargo test --workspace -- --ignored   # GPU/X11/audio tests: need X11, NVIDIA, glxgears, a sound server and paplay; the hotkey test presses keys via XTest
 ```
 
-Before declaring a task done, run format, clippy, and tests, and report the actual results. Capture, hotkey, and encoder code usually needs a real desktop session to verify. Say clearly what was tested automatically and what still needs a manual in-game check.
+Before declaring a task done, run format, clippy, and tests, and report the actual results. Capture, hotkey, audio, and encoder code usually needs a real desktop session to verify. Say clearly what was tested automatically and what still needs a manual in-game check.
 
 ## Hard rules
 

@@ -6,11 +6,15 @@
 //!
 //! The global hotkey is a passive key grab on the root window (see [`X11Hotkey`]).
 //!
+//! Audio comes from the PulseAudio API (pipewire-pulse on PipeWire systems), see
+//! [`AudioCapture`].
+//!
 //! Nothing here touches the game process: we only read what the X server already composites.
-//! X11, GLX, OpenGL and CUDA are loaded at runtime, so no `-dev` packages are needed.
+//! X11, GLX, OpenGL, CUDA and libpulse are loaded at runtime, so no `-dev` packages are needed.
 
-#![allow(unsafe_code)] // FFI to Xlib, GLX, OpenGL and CUDA; every block has a SAFETY comment.
+#![allow(unsafe_code)] // FFI to Xlib, GLX, OpenGL, CUDA and libpulse; every block has a SAFETY comment.
 
+mod audio;
 mod cuda;
 mod error;
 mod glx;
@@ -18,6 +22,7 @@ mod hotkey;
 mod window;
 mod xlib;
 
+pub use audio::{AudioCapture, AudioSink, AudioSourceKind, AudioSourceState, GameWindow};
 pub use error::CaptureError;
 pub use glx::{CaptureStatus, X11WindowCapture};
 pub use hotkey::{HotkeyError, X11Hotkey};

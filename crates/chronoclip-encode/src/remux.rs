@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 use std::ptr;
 use std::time::{Duration, Instant};
 
-use ffmpeg_next::format::context::Input;
+use ffmpeg_next::format::context::{Input, Output};
+use ffmpeg_next::util::mathematics::Rescale;
 use ffmpeg_next::{Dictionary, Packet, Rational, codec, ffi, media};
 
 use crate::error::{EncodeError, check};
@@ -22,97 +23,77 @@ pub struct RemuxStats {
     pub elapsed: Duration,
 }
 
-/// Join MPEG-TS `segments` (oldest first, same codec parameters) into an MP4 at `output`.
+/// Join MPEG-TS `segments` (oldest first, same streams and codec parameters) into an MP4 at
+/// `output`.
 ///
-/// Packets are copied, never decoded. Timestamps are rebased onto one continuous timeline
-/// starting at zero, so segments from a recording that was interrupted (window hidden, or
-/// timestamps that restart) still play back without a gap. The `moov` atom is moved to the
-/// front (`+faststart`) so the clip starts playing immediately in browsers and chat apps.
+/// The first video stream and up to `audio_titles.len()` audio streams are copied, never
+/// decoded; audio track *n* is named `audio_titles[n]`, the first one is the default track.
+/// Timestamps are rebased onto one continuous timeline starting at zero, so segments from a
+/// recording that was interrupted (window hidden, or timestamps that restart) still play back
+/// without a gap. The video decides the timeline; the audio of each segment is shifted by the
+/// same amount, so it stays in sync. The `moov` atom is moved to the front (`+faststart`) so
+/// the clip starts playing immediately in browsers and chat apps.
 ///
 /// On error a partially written `output` may remain; the caller deletes it.
-pub fn remux_to_mp4(segments: &[PathBuf], output: &Path) -> Result<RemuxStats, EncodeError> {
+pub fn remux_to_mp4(
+    segments: &[PathBuf],
+    output: &Path,
+    audio_titles: &[String],
+) -> Result<RemuxStats, EncodeError> {
     let started = Instant::now();
     let (first, rest) = segments.split_first().ok_or(EncodeError::NoSegments)?;
 
     // The first segment is probed fully: the MP4 header needs the complete codec parameters
     // (SPS/PPS as extradata), which the MPEG-TS header alone doesn't give.
     let mut first_input = ffmpeg_next::format::input(utf8_path(first)?)?;
-    let (in_index, in_time_base, params) = video_stream(&first_input)?;
+    let (video_index, video_time_base, video_params) = video_stream(&first_input)?;
+    let audio: Vec<_> = first_input
+        .streams()
+        .filter(|s| s.parameters().medium() == media::Type::Audio)
+        .take(audio_titles.len())
+        .map(|s| (s.time_base(), s.parameters()))
+        .collect();
 
     let mut out = ffmpeg_next::format::output_as(utf8_path(output)?, "mp4")?;
-    {
-        let mut stream = out.add_stream(ffmpeg_next::encoder::find(codec::Id::None))?;
-        stream.set_parameters(params);
-        // SAFETY: the stream's codec parameters are owned by the output context we hold
-        // mutably. A zero tag lets the MP4 muxer pick its own (`avc1`); the MPEG-TS tag is
-        // invalid in MP4.
-        unsafe { (*stream.parameters().as_mut_ptr()).codec_tag = 0 };
-        stream.set_time_base(in_time_base);
+    add_stream(&mut out, video_params, video_time_base, None)?;
+    for (i, (time_base, params)) in audio.iter().enumerate() {
+        let title = audio_titles.get(i).map(String::as_str).unwrap_or("Audio");
+        add_stream(&mut out, params.clone(), *time_base, Some((title, i == 0)))?;
     }
     let mut options = Dictionary::new();
     options.set("movflags", "+faststart");
     out.write_header_with(options)?;
-    let out_time_base = out.stream(0).map(|s| s.time_base()).unwrap_or(in_time_base);
+    let out_time_bases = out.streams().map(|s| s.time_base()).collect();
 
-    let mut timeline = Timeline::new(ticks_per_second(in_time_base));
-    let mut skipped_segments = 0;
-    let mut copy = |input: &mut Input, index: usize| -> Result<(), EncodeError> {
-        timeline.start_file();
-        let mut packet = Packet::empty();
-        loop {
-            match packet.read(input) {
-                Ok(()) => {}
-                Err(ffmpeg_next::Error::Eof) => return Ok(()),
-                Err(e) => {
-                    return Err(EncodeError::Call {
-                        call: "av_read_frame",
-                        error: e,
-                    });
-                }
-            }
-            if packet.stream() != index {
-                continue;
-            }
-            let Some(dts) = packet.dts().or(packet.pts()) else {
-                continue;
-            };
-            let Some(offset) = timeline.offset_for(dts) else {
-                tracing::debug!(dts, "dropping packet with non-increasing timestamp");
-                continue;
-            };
-            packet.set_dts(Some(dts + offset));
-            packet.set_pts(Some(packet.pts().unwrap_or(dts) + offset));
-            packet.set_duration(timeline.frame_ticks());
-            packet.set_stream(0);
-            packet.set_position(-1);
-            packet.rescale_ts(in_time_base, out_time_base);
-            packet
-                .write_interleaved(&mut out)
-                .map_err(|error| EncodeError::Call {
-                    call: "av_interleaved_write_frame",
-                    error,
-                })?;
-        }
+    let mut remuxer = Remuxer {
+        out,
+        out_time_bases,
+        timeline: Timeline::new(ticks_per_second(video_time_base)),
+        audio_last_dts: vec![None; audio.len()],
     };
-
-    copy(&mut first_input, in_index)?;
+    let map = stream_map(&first_input, audio.len())?;
+    debug_assert_eq!(
+        map.get(video_index).copied().flatten().map(|m| m.0),
+        Some(0)
+    );
+    remuxer.copy(&mut first_input, &map)?;
     drop(first_input);
+    let mut skipped_segments = 0;
     for path in rest {
         // The rest are opened without probing (that would decode a frame per segment and
-        // make long saves slow). The MPEG-TS header is enough to find the video stream.
-        let opened = open_input_unprobed(path).and_then(|mut input| {
-            let index = input
-                .streams()
-                .find(|s| s.parameters().medium() == media::Type::Video)
-                .map(|s| s.index())
-                .ok_or(EncodeError::NoVideoStream)?;
-            copy(&mut input, index)
+        // make long saves slow). The MPEG-TS header is enough to find the streams.
+        let copied = open_input_unprobed(path).and_then(|mut input| {
+            let map = stream_map(&input, audio.len())?;
+            remuxer.copy(&mut input, &map)
         });
-        if let Err(e) = opened {
+        if let Err(e) = copied {
             tracing::warn!("skipping unreadable segment {}: {e}", path.display());
             skipped_segments += 1;
         }
     }
+    let Remuxer {
+        mut out, timeline, ..
+    } = remuxer;
     out.write_trailer()?;
     drop(out); // closes the file
 
@@ -128,6 +109,181 @@ pub fn remux_to_mp4(segments: &[PathBuf], output: &Path) -> Result<RemuxStats, E
         skipped_segments,
         elapsed: started.elapsed(),
     })
+}
+
+/// Add an output stream copying `params`. `audio` is the track title and whether it is the
+/// default audio track.
+fn add_stream(
+    out: &mut Output,
+    params: codec::Parameters,
+    time_base: Rational,
+    audio: Option<(&str, bool)>,
+) -> Result<(), EncodeError> {
+    let mut stream = out.add_stream(ffmpeg_next::encoder::find(codec::Id::None))?;
+    stream.set_parameters(params);
+    // SAFETY: the stream's codec parameters are owned by the output context we hold mutably.
+    // A zero tag lets the MP4 muxer pick its own (`avc1`, `mp4a`); MPEG-TS tags are invalid
+    // in MP4.
+    unsafe { (*stream.parameters().as_mut_ptr()).codec_tag = 0 };
+    stream.set_time_base(time_base);
+    if let Some((title, default)) = audio {
+        let mut metadata = Dictionary::new();
+        metadata.set("title", title);
+        metadata.set("handler_name", title);
+        stream.set_metadata(metadata);
+        // SAFETY: plain field of the stream we hold mutably.
+        unsafe {
+            (*stream.as_mut_ptr()).disposition = if default {
+                ffi::AV_DISPOSITION_DEFAULT
+            } else {
+                0
+            };
+        }
+    }
+    Ok(())
+}
+
+/// For each input stream: the output stream it goes to and its time base. The first video
+/// stream goes to output 0, the first `audio_streams` audio streams to 1, 2, …
+fn stream_map(
+    input: &Input,
+    audio_streams: usize,
+) -> Result<Vec<Option<(usize, Rational)>>, EncodeError> {
+    let mut map = Vec::new();
+    let (mut video, mut audio) = (false, 0);
+    for stream in input.streams() {
+        let target = match stream.parameters().medium() {
+            media::Type::Video if !video => {
+                video = true;
+                Some(0)
+            }
+            media::Type::Audio if audio < audio_streams => {
+                audio += 1;
+                Some(audio)
+            }
+            _ => None,
+        };
+        map.push(target.map(|t| (t, stream.time_base())));
+    }
+    if !video {
+        return Err(EncodeError::NoVideoStream);
+    }
+    Ok(map)
+}
+
+/// Writes packets of all input files into one MP4.
+struct Remuxer {
+    out: Output,
+    out_time_bases: Vec<Rational>,
+    timeline: Timeline,
+    /// Last written decode timestamp per audio track (input time base).
+    audio_last_dts: Vec<Option<i64>>,
+}
+
+impl Remuxer {
+    fn copy(
+        &mut self,
+        input: &mut Input,
+        map: &[Option<(usize, Rational)>],
+    ) -> Result<(), EncodeError> {
+        self.timeline.start_file();
+        // Offset of this file's video (and time base): known at its first video packet. Audio
+        // read before that waits.
+        let mut file_offset: Option<(i64, Rational)> = None;
+        let mut pending: Vec<(usize, Rational, Packet)> = Vec::new();
+        let mut packet = Packet::empty();
+        loop {
+            match packet.read(input) {
+                Ok(()) => {}
+                Err(ffmpeg_next::Error::Eof) => break,
+                Err(e) => {
+                    return Err(EncodeError::Call {
+                        call: "av_read_frame",
+                        error: e,
+                    });
+                }
+            }
+            let Some(&Some((index, time_base))) = map.get(packet.stream()) else {
+                continue;
+            };
+            if index != 0 {
+                let audio = std::mem::replace(&mut packet, Packet::empty());
+                match file_offset {
+                    Some(offset) => self.write_audio(audio, index, time_base, offset)?,
+                    None => pending.push((index, time_base, audio)),
+                }
+                continue;
+            }
+            let Some(dts) = packet.dts().or(packet.pts()) else {
+                continue;
+            };
+            let Some(offset) = self.timeline.offset_for(dts) else {
+                tracing::debug!(dts, "dropping packet with non-increasing timestamp");
+                continue;
+            };
+            packet.set_dts(Some(dts + offset));
+            packet.set_pts(Some(packet.pts().unwrap_or(dts) + offset));
+            packet.set_duration(self.timeline.frame_ticks());
+            self.write(&mut packet, 0, time_base)?;
+            if file_offset.is_none() {
+                file_offset = Some((offset, time_base));
+                for (index, audio_time_base, audio) in std::mem::take(&mut pending) {
+                    self.write_audio(audio, index, audio_time_base, (offset, time_base))?;
+                }
+            }
+        }
+        if !pending.is_empty() {
+            tracing::debug!(
+                packets = pending.len(),
+                "dropping audio of a segment without video"
+            );
+        }
+        Ok(())
+    }
+
+    /// Shift an audio packet by the video offset of its file; drop it if it would start before
+    /// the clip or overlap audio already written.
+    fn write_audio(
+        &mut self,
+        mut packet: Packet,
+        index: usize,
+        time_base: Rational,
+        (offset, offset_time_base): (i64, Rational),
+    ) -> Result<(), EncodeError> {
+        let Some(dts) = packet.dts().or(packet.pts()) else {
+            return Ok(());
+        };
+        let offset = offset.rescale(offset_time_base, time_base);
+        let new_dts = dts + offset;
+        let Some(last) = self.audio_last_dts.get_mut(index - 1) else {
+            return Ok(());
+        };
+        if new_dts < 0 || last.is_some_and(|l| new_dts <= l) {
+            return Ok(());
+        }
+        *last = Some(new_dts);
+        packet.set_dts(Some(new_dts));
+        packet.set_pts(Some(packet.pts().unwrap_or(dts) + offset));
+        self.write(&mut packet, index, time_base)
+    }
+
+    fn write(
+        &mut self,
+        packet: &mut Packet,
+        index: usize,
+        time_base: Rational,
+    ) -> Result<(), EncodeError> {
+        let out_time_base = self.out_time_bases.get(index).copied().unwrap_or(time_base);
+        packet.set_stream(index);
+        packet.set_position(-1);
+        packet.rescale_ts(time_base, out_time_base);
+        packet
+            .write_interleaved(&mut self.out)
+            .map_err(|error| EncodeError::Call {
+                call: "av_interleaved_write_frame",
+                error,
+            })
+    }
 }
 
 fn utf8_path(path: &Path) -> Result<&str, EncodeError> {

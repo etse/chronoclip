@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod audio;
 pub mod clips;
 pub mod disk;
 pub mod hotkey;
@@ -15,4 +16,4 @@ pub mod settings;
 
 pub use hotkey::Hotkey;
 pub use paths::Paths;
-pub use settings::{EncoderPreference, Settings};
+pub use settings::{AudioMode, EncoderPreference, Settings};

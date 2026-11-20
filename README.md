@@ -4,10 +4,10 @@
 
 Chronoclip continuously records your gameplay to a rolling buffer on disk. When something worth keeping happens (a boss kill, a clutch arena win, a hilarious wipe) press your hotkey (default **`Ctrl+F9`**) and the last *N* minutes are saved as a normal video file.
 
-> **Status:** 🚧 Pre-alpha. Recording and saving replays work on X11 with an NVIDIA GPU (video only; audio is next). See [Roadmap](#roadmap).
+> **Status:** 🚧 Pre-alpha. Recording and saving replays with sound work on X11 with an NVIDIA GPU. See [Roadmap](#roadmap).
 
 <p align="center">
-  <img src="docs/images/chronoclip-window.png" alt="The Chronoclip window: recording status, a Save replay button, the last saved clip, and settings for buffer length, frame rate, encoder, hotkey and folders" width="560">
+  <img src="docs/images/chronoclip-window.png" alt="The Chronoclip window: recording status, a Save replay button, and settings for buffer length, frame rate, encoder, sound, microphone, hotkey and folders" width="560">
 </p>
 
 ## What it is
@@ -16,7 +16,7 @@ Chronoclip is a **replay buffer**, like a dashcam for your game. You never have 
 
 1. **It is always recording.** While WoW runs, Chronoclip records the game window in the background and keeps the last *N* minutes (5 to 45, default 10) on disk. Anything older is deleted automatically, so the buffer never grows.
 2. **You decide afterwards what to keep.** Something great just happened? Press `Ctrl+F9`. The last *N* minutes are saved as an MP4 in `~/Videos/Chronoclip`, ready to watch, trim or share on Discord.
-3. **Everything else is thrown away.** No hours of footage to sort through, no full disk.
+3. **Everything else is thrown away.** No hours of footage to sort through, no full disk. When you start the game again, the recording of the previous game is dropped, so a clip never mixes two game sessions.
 
 ### Using it
 
@@ -30,14 +30,14 @@ Recording uses the GPU's video encoder (NVENC), so the game barely notices. Fram
 
 | | Measured at 2560×1368 @ 60 fps, RTX 4080 |
 |---|---|
-| CPU | about 2 % of one core |
+| CPU | about 2 % of one core, plus about 1 % with sound |
 | GPU / video encoder | about 8 % / 9 % |
 | Disk | about 1.5 GB per 10 minutes of buffer at 1080p60, 7 GB for 45 minutes at 1440p |
 | Saving | 1 to 2 s for a short clip, 6 s for a full 45 minute buffer (no re-encoding) |
 
 ### Safe for your account
 
-Chronoclip only reads what your desktop already shows on screen, through the X server's official compositing API (and later the Wayland screen-sharing portal). It **never** injects into, hooks, or reads the memory of the game process, and it sends nothing over the network.
+Chronoclip only reads what your desktop already shows on screen and plays through your speakers, through the X server's official compositing API (and later the Wayland screen-sharing portal) and the sound server's recording API. It **never** injects into, hooks, or reads the memory of the game process, and it sends nothing over the network.
 
 ## Why
 
@@ -49,6 +49,7 @@ Works today (X11 + NVIDIA):
 
 - **Always-on replay buffer** on disk, oldest footage deleted automatically, cleaned up on exit.
 - **Save on hotkey**: a configurable global hotkey (default `Ctrl+F9`) that works while the game has focus, plus a Save button, tray menu and `chronoclip save` CLI command.
+- **Game sound**: only WoW's own audio by default, so voice chat and music stay out of your clips; or *all sound* if you want your Discord call in them. Optional **microphone** on its own track.
 - **Configurable buffer length**: from **5 to 45 minutes** (default **10**).
 - **Instant saves**: saving joins the already-encoded segments into an MP4 without re-encoding, so it takes seconds, not minutes.
 - **Hardware encoding** with NVENC, GPU-only capture path.
@@ -58,7 +59,6 @@ Works today (X11 + NVIDIA):
 
 Planned (see [Roadmap](#roadmap)):
 
-- **Game + optional microphone audio** via PipeWire.
 - **Notifications** when a clip is saved, a clip library, autostart.
 - **Wayland** (screen capture and hotkey through portals) and **AMD / Intel** GPUs (VAAPI).
 - **Packages**: .deb, AppImage, Flatpak, AUR.
@@ -71,7 +71,7 @@ Planned (see [Roadmap](#roadmap)):
 | Language | Rust (single Cargo workspace, no Node / JS toolchain) |
 | UI | Slint (native, software renderer: crisp text, no OpenGL in the UI) |
 | Video capture | XComposite → OpenGL texture (X11, GPU-only path), xdg-desktop-portal ScreenCast + PipeWire (Wayland) |
-| Audio capture | PipeWire |
+| Audio capture | PipeWire (through its PulseAudio API, per-application capture), AAC |
 | Encoding / muxing | FFmpeg (libav*, LGPL, dynamically linked): NVENC (via CUDA), VAAPI |
 | Global hotkey | GlobalShortcuts portal (Wayland), X11 key grab, fallback `chronoclip save` CLI |
 | Tray | Slint `SystemTrayIcon` (StatusNotifierItem) |
@@ -134,7 +134,7 @@ Any of these saves the last *N* minutes (your buffer length) while recording kee
 - click **Save replay** in the window, or **Save replay** in the tray menu,
 - run `chronoclip save`. It waits for the clip and prints its path, so you can also bind it to a key in your desktop's keyboard settings (the way to go on Wayland until the portal hotkey lands).
 
-Clips go to `~/Videos/Chronoclip/Chronoclip_YYYY-MM-DD_HH-MM-SS.mp4` (H.264 in MP4, plays everywhere, starts instantly in browsers and Discord). The save waits up to two seconds for the moment you pressed the key to be written, then copies the video without re-encoding, so even long clips take seconds. If the WoW window changed size during the buffer, the clip starts at the resize.
+Clips go to `~/Videos/Chronoclip/Chronoclip_YYYY-MM-DD_HH-MM-SS.mp4` (H.264 + AAC in MP4, plays everywhere, starts instantly in browsers and Discord). The save waits up to two seconds for the moment you pressed the key to be written, then copies the video without re-encoding, so even long clips take seconds. If the WoW window changed size during the buffer, the clip starts at the resize.
 
 ## Configuration
 
@@ -147,7 +147,8 @@ Clips go to `~/Videos/Chronoclip/Chronoclip_YYYY-MM-DD_HH-MM-SS.mp4` (H.264 in M
 | Resolution / FPS | Native / 60 | 30, 60, 120, 144 |
 | Encoder | Auto (best available) | VAAPI, NVENC, software fallback |
 | Quality | Auto | Constant quality or constant bitrate |
-| Microphone | Off | Separate audio track when enabled |
+| Sound | Game only | *Game only* (WoW's own audio; all sound until WoW's audio is found), *All sound* (everything you hear, incl. voice chat and music), *Off* |
+| Microphone | Off | Your default microphone as a second audio track (players and Discord play only the first track) |
 
 **Disk usage tip:** at 1080p60 and ~20 Mbit/s, a 10 minute buffer uses about 1.5 GB. A 45 minute buffer at the same bitrate uses about 6.8 GB.
 
@@ -159,7 +160,7 @@ Detailed status and task checklists: [docs/roadmap.md](docs/roadmap.md).
 2. **M1, skeleton app** ✅ Slint window, tray icon, settings persisted to disk, single instance + `chronoclip save` IPC
 3. **M2, capture pipeline (X11 + NVIDIA)** ✅ XComposite window capture → GL texture → CUDA → NVENC → rolling segments
 4. **M3, save replay** ✅ X11 global hotkey → lossless remux of the last N minutes to MP4
-5. **M4, audio**: game audio via PipeWire, optional mic track
+5. **M4, audio** 🚧 game audio via PipeWire (game only or all sound), optional mic track
 6. **M5, polish**: notifications, clip library, autostart, WoW window auto-detection
 7. **M6, Wayland + AMD/Intel**: portal/PipeWire capture, GlobalShortcuts portal, VAAPI
 8. **M7, packaging**: .deb (Mint/Ubuntu), AppImage, Flatpak, AUR

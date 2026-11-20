@@ -56,12 +56,14 @@ export component MainWindow inherits Window {
     in property <string> hotkey-error;
     in property <[string]> fps-options;
     in property <[string]> encoder-options;
+    in property <[string]> audio-options;
 
     // Editable settings (read by Rust on apply)
     in-out property <string> hotkey;
     in-out property <float> buffer-minutes: 10;
     in-out property <string> fps;
     in-out property <string> encoder;
+    in-out property <string> audio;
     in-out property <bool> microphone;
     in-out property <string> buffer-dir;
     in-out property <string> output-dir;
@@ -189,9 +191,32 @@ export component MainWindow inherits Window {
                                 }
                             }
 
-                            Switch {
-                                text: "Record microphone (separate audio track)";
-                                checked <=> root.microphone;
+                            HorizontalLayout {
+                                spacing: 12px;
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    horizontal-stretch: 1;
+                                    Text {
+                                        text: "Sound";
+                                    }
+
+                                    ComboBox {
+                                        model: root.audio-options;
+                                        current-value <=> root.audio;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: end;
+                                    Switch {
+                                        text: "Microphone (own track)";
+                                        checked <=> root.microphone;
+                                    }
+                                }
+                            }
+
+                            Hint {
+                                text: "Game only: just World of Warcraft, without voice chat or music (all sound until the game's audio is found). All sound: everything you hear.";
                             }
                         }
                     }

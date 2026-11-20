@@ -30,6 +30,23 @@ impl EncoderPreference {
     pub const ALL: [Self; 4] = [Self::Auto, Self::Nvenc, Self::Vaapi, Self::Software];
 }
 
+/// Which sound goes into the clip's main audio track.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AudioMode {
+    /// Only the game's own audio stream (falls back to all sound while it isn't found).
+    #[default]
+    Game,
+    /// Everything played on the default output: game, voice chat, music, …
+    All,
+    /// No game/desktop audio track.
+    Off,
+}
+
+impl AudioMode {
+    pub const ALL: [Self; 3] = [Self::Game, Self::All, Self::Off];
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -39,6 +56,8 @@ pub struct Settings {
     /// One of [`SUPPORTED_FPS`].
     pub fps: u32,
     pub encoder: EncoderPreference,
+    pub audio: AudioMode,
+    /// Record the default microphone as a separate audio track.
     pub microphone: bool,
     /// `None` means [`Paths::default_buffer_dir`].
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -55,6 +74,7 @@ impl Default for Settings {
             buffer_minutes: DEFAULT_BUFFER_MINUTES,
             fps: DEFAULT_FPS,
             encoder: EncoderPreference::default(),
+            audio: AudioMode::default(),
             microphone: false,
             buffer_dir: None,
             output_dir: None,
@@ -261,6 +281,7 @@ mod tests {
             buffer_minutes: 30,
             fps: 144,
             encoder: EncoderPreference::Nvenc,
+            audio: AudioMode::All,
             microphone: true,
             buffer_dir: Some("/mnt/ssd/buffer".into()),
             output_dir: None,
@@ -293,6 +314,7 @@ mod tests {
         assert_eq!(s.buffer_minutes, 20);
         assert_eq!(s.encoder, EncoderPreference::Vaapi);
         assert_eq!(s.fps, DEFAULT_FPS);
+        assert_eq!(s.audio, AudioMode::Game);
         Ok(())
     }
 

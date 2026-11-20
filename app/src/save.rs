@@ -75,7 +75,7 @@ pub fn save_replay(buffer: &Arc<ReplayBuffer>, output_dir: &Path) -> Result<Save
         "saving replay"
     );
 
-    let result = chronoclip_encode::remux_to_mp4(&inputs, &partial);
+    let result = chronoclip_encode::remux_to_mp4(&inputs, &partial, &buffer.audio_tracks());
     drop(pinned); // the buffer may delete old segments again
     let stats = match result {
         Ok(stats) => stats,

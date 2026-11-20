@@ -17,6 +17,8 @@ struct State {
 pub struct ReplayBuffer {
     state: Mutex<State>,
     changed: Condvar,
+    /// Titles of the audio tracks in the segments, in stream order.
+    audio_tracks: Mutex<Vec<String>>,
 }
 
 impl ReplayBuffer {
@@ -27,7 +29,21 @@ impl ReplayBuffer {
                 open_seq: None,
             }),
             changed: Condvar::new(),
+            audio_tracks: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Recorder: the audio tracks its segments contain (set once, before recording).
+    pub fn set_audio_tracks(&self, titles: Vec<String>) {
+        *self.audio_tracks.lock().unwrap_or_else(|e| e.into_inner()) = titles;
+    }
+
+    /// Titles of the audio tracks, in stream order.
+    pub fn audio_tracks(&self) -> Vec<String> {
+        self.audio_tracks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     fn lock(&self) -> MutexGuard<'_, State> {
@@ -107,6 +123,18 @@ impl ReplayBuffer {
         !result.timed_out()
     }
 
+    /// Forget all segments and delete their files (a new game started). Call only while no
+    /// save is running (see [`Self::wait_until_unpinned`]).
+    pub fn discard(&self) {
+        let removed = {
+            let mut state = self.lock();
+            let removed = state.index.clear();
+            self.changed.notify_all();
+            removed
+        };
+        delete(removed);
+    }
+
     /// Forget all segments (the files are deleted by cleaning the buffer folder).
     pub fn clear(&self) {
         let mut state = self.lock();
@@ -179,6 +207,22 @@ mod tests {
         drop(pinned);
         assert!(!first.exists(), "segment not deleted after the save");
         assert!(buffer.wait_until_unpinned(Duration::ZERO));
+        Ok(())
+    }
+
+    #[test]
+    fn discard_deletes_everything() -> std::io::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let retention = Duration::from_secs(60);
+        let buffer = Arc::new(ReplayBuffer::new(retention));
+        let segments: Vec<Segment> = (0..3).map(|seq| segment(dir.path(), seq)).collect();
+        for s in &segments {
+            buffer.add_segment(s.clone(), retention);
+        }
+        buffer.discard();
+        assert!(segments.iter().all(|s| !s.path.exists()));
+        assert_eq!(buffer.stats(), (Duration::ZERO, 0));
+        assert!(buffer.pin_for_save().is_none());
         Ok(())
     }
 

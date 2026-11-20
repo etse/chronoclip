@@ -3,6 +3,7 @@
 //! Without a subcommand this starts the tray app (or shows the window of an already running
 //! instance). Subcommands talk to the running instance over a Unix socket.
 
+mod audio;
 mod buffer;
 mod controller;
 mod hotkey;

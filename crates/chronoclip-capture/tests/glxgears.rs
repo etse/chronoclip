@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use chronoclip_capture::{
     CaptureStatus, CudaDestination, WindowMatcher, X11WindowCapture, find_window,
 };
-use chronoclip_encode::{EncoderConfig, NvencEncoder, SegmentWriter};
+use chronoclip_encode::{EncoderConfig, NvencEncoder, SegmentWriter, StreamConfig};
 
 struct KillOnDrop(Child);
 impl Drop for KillOnDrop {
@@ -65,8 +65,10 @@ fn captures_glxgears_window() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut writer = SegmentWriter::new(
         &dir,
-        encoder.parameters()?,
-        encoder.time_base(),
+        vec![StreamConfig {
+            params: encoder.parameters()?,
+            time_base: encoder.time_base(),
+        }],
         Duration::from_secs(2),
         0,
         0,
@@ -88,7 +90,7 @@ fn captures_glxgears_window() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(status, CaptureStatus::Captured);
         encoder.encode(Some((frame, n)), &mut packets)?;
         for p in packets.drain(..) {
-            segments.extend(writer.write(p)?);
+            segments.extend(writer.write(p, 0)?);
         }
         // Pace roughly at 60 fps.
         let target = Duration::from_micros(16_667) * (n as u32 + 1);
@@ -98,7 +100,7 @@ fn captures_glxgears_window() -> Result<(), Box<dyn std::error::Error>> {
     }
     encoder.encode(None, &mut packets)?;
     for p in packets.drain(..) {
-        segments.extend(writer.write(p)?);
+        segments.extend(writer.write(p, 0)?);
     }
     segments.extend(writer.finish()?);
 

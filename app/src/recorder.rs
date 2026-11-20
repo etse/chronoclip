@@ -1,13 +1,19 @@
-//! The recording pipeline: find the window → capture (GPU) → NVENC → segment files.
+//! The recording pipeline: find the window → capture (GPU) → NVENC → segment files, plus
+//! audio tracks → AAC into the same segments.
 //!
 //! Threads:
 //! - `recorder`: finds the window, owns the GL context, captures and encodes at the target FPS.
+//! - `audio` / `audio-mic`: capture sound and encode it (see [`crate::audio`]).
 //! - `writer`: writes packets into segments, adds them to the [`ReplayBuffer`] (which deletes
 //!   old segments).
 //!
 //! They are connected by a bounded channel; if the disk stalls, capture waits (and skips frames)
 //! instead of buffering without limit. Saves read the shared [`ReplayBuffer`] from their own
 //! thread.
+//!
+//! Every window session (from finding the window until it closes, hides or resizes) gets an
+//! id. Video and audio timestamps count from the session start, and the writer drops packets
+//! of a session that has already ended.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -17,13 +23,16 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use chronoclip_capture::{
-    CaptureError, CaptureStatus, CudaDestination, WindowMatcher, X11WindowCapture, find_window,
+    AudioSourceKind, CaptureError, CaptureStatus, CudaDestination, GameWindow, WindowMatcher,
+    X11WindowCapture, find_window,
 };
+use chronoclip_core::AudioMode;
 use chronoclip_core::disk::bitrate_bps;
 use chronoclip_core::segments::{clean_buffer_dir, retention_for_minutes};
 use chronoclip_core::settings::EncoderPreference;
-use chronoclip_encode::{EncoderConfig, NvencEncoder, Packet, SegmentWriter};
-use ffmpeg_next::{Rational, codec};
+use chronoclip_encode::{
+    AacEncoder, EncoderConfig, NvencEncoder, Packet, SegmentWriter, StreamConfig,
+};
 
 /// Length of one buffer segment (and the keyframe interval).
 pub const SEGMENT_SECONDS: u32 = 2;
@@ -35,6 +44,7 @@ const STATUS_INTERVAL: Duration = Duration::from_millis(500);
 /// How long stopping the recorder waits for a running save before deleting the buffer.
 const SAVE_WAIT_ON_STOP: Duration = Duration::from_secs(600);
 
+use crate::audio::{AudioTrack, Session, SessionClock, describe};
 use crate::buffer::ReplayBuffer;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,7 +53,25 @@ pub struct RecorderConfig {
     pub buffer_minutes: u32,
     pub fps: u32,
     pub encoder: EncoderPreference,
+    pub audio: AudioMode,
+    pub microphone: bool,
     pub matcher: WindowMatcher,
+}
+
+impl RecorderConfig {
+    /// The audio tracks to record, in track order.
+    fn audio_sources(&self) -> Vec<AudioSourceKind> {
+        let mut sources = Vec::new();
+        match self.audio {
+            AudioMode::Game => sources.push(AudioSourceKind::Game),
+            AudioMode::All => sources.push(AudioSourceKind::AllSound),
+            AudioMode::Off => {}
+        }
+        if self.microphone {
+            sources.push(AudioSourceKind::Microphone);
+        }
+        sources
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +85,8 @@ pub enum RecorderStatus {
         retention: Duration,
         bytes: u64,
         skipped_frames: u64,
+        /// What the audio tracks record, e.g. "game sound + mic"; `None` without audio.
+        audio: Option<String>,
     },
     Error(String),
     Stopped,
@@ -136,22 +166,30 @@ fn sleep_unless_stopped(stop: &AtomicBool, duration: Duration) -> bool {
     stop.load(Ordering::Relaxed)
 }
 
-enum WriterMessage {
-    /// A new encoder session started (e.g. after a resize): start a new segment.
+pub enum WriterMessage {
+    /// A new window session started (e.g. after a resize): start a new segment.
     Session {
-        params: codec::Parameters,
-        time_base: Rational,
+        id: u64,
+        /// Video first, then the audio tracks.
+        streams: Vec<StreamConfig>,
         /// Frame size; segments of the same size can be joined into one clip.
         size: (u32, u32),
     },
-    Packet(Packet),
-    /// The encoder session ended (window closed, hidden or resized): finish the segment.
+    /// An encoded packet of `stream` (0 = video) in session `session`.
+    Packet {
+        session: u64,
+        stream: usize,
+        packet: Packet,
+    },
+    /// The session ended (window closed, hidden or resized): finish the segment.
     EndSession,
+    /// A new game started: delete everything recorded before (after a running save).
+    Discard,
 }
 
-/// `codec::Parameters` is not `Send` in ffmpeg-next, but ours is a plain owned copy of
-/// AVCodecParameters that is moved to the writer thread and never shared.
-struct SendMessage(WriterMessage);
+/// `codec::Parameters` is not `Send` in ffmpeg-next, but ours are plain owned copies of
+/// AVCodecParameters that are moved to the writer thread and never shared.
+pub struct SendMessage(pub WriterMessage);
 // SAFETY: see above; the message is moved, never aliased across threads.
 #[allow(unsafe_code)]
 unsafe impl Send for SendMessage {}
@@ -207,10 +245,38 @@ fn run(
         }
     };
 
+    // Audio tracks run for the whole recorder lifetime; they write only while a window
+    // session is active.
+    let clock = Arc::new(SessionClock::default());
+    let tracks = start_audio(&config, &clock, &sender);
+    buffer.set_audio_tracks(tracks.iter().map(|t| t.title.clone()).collect());
+    let audio_streams: Vec<StreamConfig> = match tracks.first() {
+        Some(_) => match AacEncoder::new() {
+            Ok(aac) => vec![
+                StreamConfig {
+                    params: aac.parameters(),
+                    time_base: aac.time_base(),
+                };
+                tracks.len()
+            ],
+            Err(_) => Vec::new(), // start_audio already checked this
+        },
+        None => Vec::new(),
+    };
+
+    let mut session_id = 0;
+    // The game that was recorded last, and whether its window has disappeared since. A clip
+    // only contains the current game: when the game is started again, the old recording is
+    // dropped. (Not when it closes, so the end of a game can still be saved afterwards.)
+    let mut last_game: Option<Option<u32>> = None;
+    let mut window_gone = false;
     while !stop.load(Ordering::Relaxed) {
         let window = match find_window(&config.matcher) {
             Ok(Some(w)) if w.viewable => w,
-            Ok(_) => {
+            Ok(found) => {
+                if found.is_none() && last_game.is_some() {
+                    window_gone = true;
+                }
                 on_status(RecorderStatus::WaitingForWindow);
                 sleep_unless_stopped(stop, WINDOW_POLL);
                 continue;
@@ -231,12 +297,34 @@ fn run(
             height = window.height,
             "found window"
         );
+        let restarted = window_gone || last_game.is_some_and(|pid| pid != window.pid);
+        if restarted {
+            tracing::info!("the game was restarted: dropping the recording of the previous one");
+            let _ = sender.send(SendMessage(WriterMessage::Discard));
+        }
+        last_game = Some(window.pid);
+        window_gone = false;
+        for track in &tracks {
+            track.set_game(Some(GameWindow {
+                pid: window.pid,
+                title: window.title.clone(),
+            }));
+        }
+        session_id += 1;
         let result = record_window(
             &config,
-            window.id,
-            (window.width, window.height),
+            Window {
+                id: window.id,
+                size: (window.width, window.height),
+                session: session_id,
+            },
             stop,
             &sender,
+            Audio {
+                clock: &clock,
+                streams: &audio_streams,
+                tracks: &tracks,
+            },
             buffer,
             &retention_secs,
             on_status.as_ref(),
@@ -253,6 +341,7 @@ fn run(
         }
     }
 
+    drop(tracks); // stops the audio threads, which hold senders too
     drop(sender); // writer finishes its segment and exits
     if writer.join().is_err() {
         tracing::error!("writer thread panicked");
@@ -269,19 +358,69 @@ fn run(
     on_status(RecorderStatus::Stopped);
 }
 
+/// Start the audio tracks the settings ask for. A track that can't start is left out (and
+/// logged), so the recording still works without it.
+fn start_audio(
+    config: &RecorderConfig,
+    clock: &Arc<SessionClock>,
+    sender: &SyncSender<SendMessage>,
+) -> Vec<AudioTrack> {
+    let sources = config.audio_sources();
+    if sources.is_empty() {
+        return Vec::new();
+    }
+    if let Err(e) = AacEncoder::new() {
+        tracing::error!("recording without sound: the AAC encoder is not available: {e}");
+        return Vec::new();
+    }
+    let mut tracks = Vec::new();
+    for kind in sources {
+        let index = tracks.len() + 1; // stream 0 is the video
+        match AudioTrack::start(kind, index, Arc::clone(clock), sender.clone()) {
+            Ok(track) => tracks.push(track),
+            Err(e) => tracing::error!(?kind, "could not start audio capture: {e}"),
+        }
+    }
+    tracks
+}
+
+/// The window to record and the id of this recording session.
+struct Window {
+    id: u64,
+    size: (u32, u32),
+    session: u64,
+}
+
+/// The audio side of a session.
+struct Audio<'a> {
+    clock: &'a SessionClock,
+    streams: &'a [StreamConfig],
+    tracks: &'a [AudioTrack],
+}
+
+/// Marks the session as active for the audio tracks; ends it when dropped.
+struct ActiveSession<'a>(&'a SessionClock);
+
+impl Drop for ActiveSession<'_> {
+    fn drop(&mut self) {
+        self.0.set(None);
+    }
+}
+
 /// Record one window until it closes, resizes, becomes invisible, or `stop` is set.
 /// `Ok(())` means "look for the window again".
 #[allow(clippy::too_many_arguments)]
 fn record_window(
     config: &RecorderConfig,
-    window: u64,
-    (width, height): (u32, u32),
+    window: Window,
     stop: &AtomicBool,
     sender: &SyncSender<SendMessage>,
+    audio: Audio,
     buffer: &ReplayBuffer,
     retention_secs: &AtomicU64,
     on_status: &StatusFn,
 ) -> Result<(), String> {
+    let (width, height) = window.size;
     let fps = config.fps;
     let mut encoder = NvencEncoder::new(EncoderConfig {
         width,
@@ -291,7 +430,7 @@ fn record_window(
         gop_frames: SEGMENT_SECONDS * fps,
     })
     .map_err(|e| format!("Cannot start the NVENC encoder: {e}"))?;
-    let mut capture = match X11WindowCapture::new(window, encoder.cuda_context()) {
+    let mut capture = match X11WindowCapture::new(window.id, encoder.cuda_context()) {
         Ok(c) => c,
         Err(CaptureError::WindowGone | CaptureError::WindowNotViewable) => return Ok(()),
         Err(e) => return Err(format!("Cannot capture the window: {e}")),
@@ -302,14 +441,32 @@ fn record_window(
             .send(SendMessage(msg))
             .map_err(|_| "writer stopped".to_owned())
     };
-    send(WriterMessage::Session {
+    let mut streams = vec![StreamConfig {
         params,
         time_base: encoder.time_base(),
+    }];
+    streams.extend_from_slice(audio.streams);
+    send(WriterMessage::Session {
+        id: window.session,
+        streams,
         size: (width, height),
     })?;
 
     let interval = Duration::from_secs(1) / fps;
     let start = Instant::now();
+    // From now on the audio tracks encode with timestamps relative to `start`, the instant of
+    // video frame 0. Published after the Session message, so the writer knows the session
+    // before the first audio packet arrives.
+    audio.clock.set(Some(Session {
+        id: window.session,
+        start,
+    }));
+    let _active = ActiveSession(audio.clock);
+    let video_packet = |packet| WriterMessage::Packet {
+        session: window.session,
+        stream: 0,
+        packet,
+    };
     let mut frame_number: u64 = 0;
     let mut skipped: u64 = 0;
     let mut packets = Vec::new();
@@ -342,7 +499,7 @@ fn record_window(
             .encode(Some((frame, pts)), &mut packets)
             .map_err(|e| e.to_string())?;
         for packet in packets.drain(..) {
-            send(WriterMessage::Packet(packet))?;
+            send(video_packet(packet))?;
         }
 
         // Pace to wall-clock time. If we fell behind, skip frame numbers so timestamps stay real-time.
@@ -371,6 +528,13 @@ fn record_window(
                 retention: Duration::from_secs(retention_secs.load(Ordering::Relaxed)),
                 bytes,
                 skipped_frames: skipped,
+                audio: describe(
+                    &audio
+                        .tracks
+                        .iter()
+                        .map(AudioTrack::state)
+                        .collect::<Vec<_>>(),
+                ),
             });
         }
     };
@@ -378,7 +542,7 @@ fn record_window(
     // Flush the encoder so the last frames reach the buffer.
     if encoder.encode(None, &mut packets).is_ok() {
         for packet in packets.drain(..) {
-            send(WriterMessage::Packet(packet))?;
+            send(video_packet(packet))?;
         }
     }
     if skipped > 0 {
@@ -400,6 +564,8 @@ fn write_segments(
     let mut next_seq = 0;
     // Stream id and frame size of the current session; a new size starts a new stream.
     let mut stream: Option<(u64, (u32, u32))> = None;
+    // Packets of other sessions (audio arriving after its session ended) are dropped.
+    let mut session: Option<u64> = None;
 
     let finish = |writer: &mut SegmentWriter| {
         match writer.finish() {
@@ -415,11 +581,8 @@ fn write_segments(
 
     while let Ok(SendMessage(message)) = receiver.recv() {
         match message {
-            WriterMessage::Session {
-                params,
-                time_base,
-                size,
-            } => {
+            WriterMessage::Session { id, streams, size } => {
+                session = Some(id);
                 if let Some(mut old) = writer.take() {
                     finish(&mut old);
                     next_seq = old.next_seq();
@@ -432,16 +595,22 @@ fn write_segments(
                 stream = Some((id, size));
                 writer = Some(SegmentWriter::new(
                     dir,
-                    params,
-                    time_base,
+                    streams,
                     Duration::from_secs(SEGMENT_SECONDS.into()),
                     id,
                     next_seq,
                 ));
             }
-            WriterMessage::Packet(packet) => {
+            WriterMessage::Packet {
+                session: packet_session,
+                stream: index,
+                packet,
+            } => {
+                if session != Some(packet_session) {
+                    continue;
+                }
                 let Some(w) = writer.as_mut() else { continue };
-                match w.write(packet) {
+                match w.write(packet, index) {
                     Ok(Some(segment)) => buffer.add_segment(
                         segment,
                         Duration::from_secs(retention_secs.load(Ordering::Relaxed)),
@@ -451,7 +620,18 @@ fn write_segments(
                 }
                 buffer.set_open_segment(w.current_seq());
             }
+            WriterMessage::Discard => {
+                if let Some(w) = writer.as_mut() {
+                    finish(w);
+                }
+                // A save in progress is reading the old segments; let it finish first.
+                if !buffer.wait_until_unpinned(SAVE_WAIT_ON_STOP) {
+                    tracing::warn!("a save is still running; dropping the old recording anyway");
+                }
+                buffer.discard();
+            }
             WriterMessage::EndSession => {
+                session = None;
                 if let Some(w) = writer.as_mut() {
                     finish(w);
                 }

@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: X11 + NVIDIA capture (M2) and saving replays (M3) are implemented; audio, Wayland and VAAPI are still design. Update this document as the implementation lands.
+> Status: X11 + NVIDIA capture (M2), saving replays (M3) and audio (M4) are implemented; Wayland and VAAPI are still design. Update this document as the implementation lands.
 
 ## Goals
 
@@ -18,10 +18,11 @@
 │ (X11, portal + │ ─────────────► │ (NVENC/VAAPI) │                   │  Segment writer  │
 │  PipeWire)     │  (bounded ch.) └───────────────┘                   │  (2 s segments)  │
 └────────────────┘                                                    │                  │
-┌────────────────┐  PCM frames    ┌───────────────┐                   │                  │
-│ AudioSource    │ ─────────────► │ Audio encoder │ ────────────────► │                  │
-│ (PipeWire)     │                │ (AAC/Opus)    │                   └────────┬─────────┘
-└────────────────┘                └───────────────┘                            │ writes
+┌────────────────┐  PCM + time    ┌───────────────┐                   │                  │
+│ AudioCapture   │ ─────────────► │ AudioTimeline │ ────────────────► │                  │
+│ (PipeWire via  │                │ → AAC encoder │                   └────────┬─────────┘
+│  libpulse)     │                └───────────────┘                            │ writes
+└────────────────┘                                                             │
                                                                                ▼
                                          ~/.cache/chronoclip/buffer/seg_000123.ts ...
                                          + in-memory SegmentIndex (ring)
@@ -37,8 +38,11 @@
 | `SegmentIndex` | `chronoclip-core` | Ordered ring of finished segments (seq, stream, path, duration, size). Prunes segments older than the buffer length, selects segments for a save, and holds back pinned segments from deletion. |
 | `ReplayBuffer` | `app/` (`buffer.rs`) | The `SegmentIndex` plus the segment being written, behind a mutex + condvar. Shared by the writer thread (adds segments, deletes pruned files) and saves. |
 | Save | `app/` (`save.rs`), remux in `chronoclip-encode` | See [Saving a replay](#saving-a-replay). Runs on its own thread; capture keeps running. |
-| `VideoSource` / `AudioSource` traits | `chronoclip-capture` | `start(target)` → frame stream, `stop()`. Backends: X11 (first), portal+PipeWire (later). |
-| `Encoder` / `SegmentWriter` | `chronoclip-encode` | FFmpeg wrappers. Probe and select NVENC / VAAPI / software; closed GOP aligned to segment length so every segment starts with an IDR frame. |
+| `X11WindowCapture` | `chronoclip-capture` | Window capture into CUDA frames. Wayland (portal + PipeWire) comes later behind the same recorder interface. |
+| `AudioCapture` | `chronoclip-capture` | One thread per audio track with a PulseAudio main loop; hands interleaved `f32` stereo at 48 kHz plus its arrival time to an `AudioSink`. See [Audio](#audio). |
+| `AudioTimeline` | `chronoclip-core` | Places captured chunks on the session clock: silence for gaps, drops overlap, corrects device clock drift. |
+| Audio tracks | `app/` (`audio.rs`) | `AudioSink` per track: timeline → `AacEncoder` → writer, timestamps relative to the current window session. |
+| `Encoder` / `SegmentWriter` | `chronoclip-encode` | FFmpeg wrappers. NVENC with a closed GOP aligned to segment length so every segment starts with an IDR frame; AAC (FFmpeg's built-in encoder). The segment writer cuts on video keyframes and writes the audio streams into the same files. |
 | App | `app/` | Slint UI, tray icon, global hotkey, single-instance IPC + CLI, lifecycle (start/stop, WoW detection), desktop notifications. |
 
 ### Linux integration
@@ -48,7 +52,7 @@ Implementation order follows the reference setup (Linux Mint Cinnamon on X11, NV
 | Concern | X11 (first) | Wayland (later) |
 |---|---|---|
 | Video capture | `XCompositeRedirectWindow` on the WoW window → named pixmap → `GLX_EXT_texture_from_pixmap` texture → drawn with a full-screen-triangle shader into our own RGBA8 texture (NVIDIA can't attach pixmap textures to an FBO, so no blit) → registered with CUDA (`cuGraphicsGLRegisterImage`) → `cuMemcpy2D` into the encoder's CUDA frame → NVENC. Frames never touch the CPU. **Copy mode:** NVIDIA refuses `glXCreatePixmap` (BadAlloc) on the backing pixmap of windows rendered via Vulkan/DXVK (Wine/Proton games, Battle.net, Chrome); for those the X server first copies the window into a pixmap we own (`XCopyArea`, a server-side GPU copy) and that pixmap is bound instead. A resize or minimize ends the session; the recorder then starts a new one at the new size. | xdg-desktop-portal ScreenCast (`ashpd`) → PipeWire stream, DMA-BUF when available. Persist the portal **restore token** so the user picks the WoW window only once. |
-| Audio | PipeWire: capture the WoW/Wine app stream node, or the default sink monitor | same |
+| Audio | PulseAudio client API (`libpulse.so.0`, loaded at runtime), served by `pipewire-pulse`: the WoW stream alone via a monitor stream (`pa_stream_set_monitor_stream`), or `@DEFAULT_MONITOR@` for all sound; microphone from the default source | same (the portal is only needed for video) |
 | Encoder | NVENC (NVIDIA, via FFmpeg `h264_nvenc` / `hevc_nvenc` / `av1_nvenc` with CUDA hw frames), VAAPI (AMD/Intel) | same |
 | Global hotkey | `XGrabKey` on the root window, once per Caps Lock / Num Lock combination; own code in `chronoclip-capture` (`X11Hotkey`) with its own thread and X connection. A key taken by another client (`BadAccess`) is reported in the UI | GlobalShortcuts portal (KDE Plasma 6, GNOME 48+, Hyprland). Fallback: user binds `chronoclip save` in their desktop settings |
 | Tray | Slint `SystemTrayIcon` (StatusNotifierItem); GNOME needs the AppIndicator extension | same |
@@ -124,6 +128,8 @@ Triggers: the hotkey, the window's **Save replay** button, the tray menu, and `c
 
 Stopping the recorder (quit, or a settings change that restarts it) waits for a running save before deleting the buffer.
 
+**One game per clip:** when the game is started again (its window disappeared and a new one appears, or the window belongs to a new process), the recorder sends `Discard` to the writer, which deletes all segments of the previous game, after waiting for a running save. Closing the game doesn't delete anything, so the last minutes before quitting can still be saved; minimizing or resizing doesn't count as a restart.
+
 ### Measured (M3, RTX 4080, release build, glxgears 2560×1368 @ 60 fps)
 
 | Clip | Segments | Size | Remux | Press → file ready |
@@ -142,6 +148,35 @@ Stopping the recorder (quit, or a settings change that restarts it) waits for a 
 - **A clip never spans a resolution change**; segments of separate sessions at the same size are joined, without the gap.
 - **Slint software renderer** instead of femtovg (OpenGL): femtovg drew text on fractional pixels, so labels in some rows looked wavy. The software renderer snaps text to whole pixels, keeps OpenGL out of the UI (only our GLX capture uses it) and makes the build smaller. A small settings window doesn't need GPU rendering.
 - **`+faststart`** although it rewrites the file once at the end: compatibility (browsers, Discord) over a few seconds on very long clips.
+
+## Audio
+
+Up to two audio tracks, chosen in the settings: **Sound** = *Game only* (default), *All sound* or *Off*, plus an optional **microphone** track. Track 1 is the default track (players and Discord play only that one).
+
+1. **Capture** (`AudioCapture`, one thread per track): a non-threaded PulseAudio main loop with a 10 ms fragment size. *Game only* lists the playback streams (sink inputs) every 2 s and records the game's stream as a monitor stream: the one whose `application.process.id` is the recorded window's process, whose process/application name is a WoW executable, or whose application name is "World of Warcraft…" or the window title. The name match is needed in practice: WoW under Proton/Faugus plays through Wine as a *native PipeWire* client, and pipewire-pulse then shows the stream with only `application.name = "World of Warcraft"`, no process id (the pid is only on the PipeWire client object): only the game, without voice chat or music. While no game stream exists (game not started, or it has no sound device yet), it records the default output's monitor instead and says so in the status line ("all sound (game audio not found)"), and switches over when the stream appears. *All sound* records the default output's monitor and reconnects when the default output changes. If the sound server is missing or fails, the track keeps going with silence and the capture retries every 3 s.
+2. **Timeline** (`AudioTimeline`, unit tested): every chunk's position on the session clock comes from its arrival time. The first chunk is placed exactly; after that the samples are written back to back and only corrected when they are clearly off by more than 20 ms: a gap of 60 ms or more (stream paused) becomes silence, audio that arrived earlier than its position (device clock fast) is cut, and lag (device clock slow) is filled once the *smallest* offset of the last 100 chunks exceeds 20 ms, because the sound server delivers in ~21 ms quanta and arrival times are only ever late. With no audio at all for 200 ms the track is filled with silence, so it never stalls.
+3. **Encode** (`AacEncoder`): AAC-LC, 48 kHz stereo, 160 kbit/s, FFmpeg's built-in encoder. A new encoder per window session; its timestamps count from the instant of video frame 0 of that session, so audio and video share one clock. The priming packet (before 0) is dropped, since MPEG-TS can't store negative timestamps.
+4. **Write**: the packets go through the same bounded channel to the writer, tagged with their session; packets of a session that already ended are dropped. The segment writer puts them into the open segment (cut on video keyframes) in arrival order, without interleaving.
+5. **Remux**: all streams are copied. The video decides each segment's offset on the clip timeline; the segment's audio gets the same offset, so it stays in sync across joins and window sessions. Audio before the clip start or overlapping already written audio is dropped. Tracks are named ("Game audio" / "All sound", "Microphone").
+
+### Measured (M4, RTX 4080, release build)
+
+| | |
+|---|---|
+| A/V sync, ffplay test video with a flash and a beep every second, *Game only*, 40 s | audio 1 to 18 ms before the picture (the video is sampled at 60 Hz, so ±1 frame); one timeline correction (the start) |
+| Same, 10 min clip | 600 flashes, 600 beeps, beeps exactly 1.000 s apart in the clip (except where the test video loops); offset −40 to +19 ms, shifting only when ffplay loops its file (ffplay's own sync); two timeline corrections in 10 min (start, and 10 ms at 9:26): the USB headset's clock is within ~35 ppm |
+| *All sound* + microphone, window closed and reopened mid-clip | both tracks −21 to +9 ms, also after the new session; the two sessions join without the 3 s gap |
+| CPU (1280×720 @ 60 test video, 120 s) | 1.9 % of one core without sound, 3.2 % with *Game only*: sound costs ~1.2 % of one core |
+
+Clips decode without errors in FFmpeg and play in mpv; `moov` is first. Not checked yet: Firefox and Discord upload.
+
+## Decisions made in M4
+
+- **PulseAudio client API instead of the native PipeWire API.** `pipewire-pulse` is installed on every desktop that runs PipeWire, the API records a single application's stream (monitor streams), and `libpulse.so.0` can be loaded at runtime like X11 and CUDA, so no new build dependency (the `pipewire` crate needs `libpipewire-0.3-dev` + bindgen). It also works on plain PulseAudio systems. The native API can come later behind `AudioCapture` if needed.
+- **Game stream found by process id or name**: the same process as the captured window, a WoW executable name, or the application name "World of Warcraft" / the window title (what native-PipeWire Wine streams carry; verified in-game). Falls back to all sound rather than silence, so a clip never loses sound just because detection failed; the log then lists the streams it saw.
+- **AAC in the segments, not Opus:** MP4 + AAC plays everywhere (browsers, Discord, phones) without remuxing again.
+- **Arrival-time timestamps with drift correction** instead of resampling: simple and in sync within a frame; the cost is a short cut or silence every half minute or so on devices whose clock is far off. Resampling can replace it if that turns out audible.
+- **Microphone as a separate track**, not mixed into the game track: the clip keeps both editable. Discord and browsers only play track 1, so the mic isn't heard there (mixing is not planned for M4).
 
 ## Open questions
 
