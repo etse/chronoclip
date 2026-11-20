@@ -1,5 +1,6 @@
 //! Glue between the Slint UI and Rust: fills the form from settings and reads it back.
 
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::rc::Rc;
@@ -59,6 +60,7 @@ fn string_model(items: impl IntoIterator<Item = String>) -> ModelRc<SharedString
 
 pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: Arc<Controller>) {
     let paths = Rc::new(paths);
+    let save_controller = Arc::clone(&controller);
 
     window.set_version(env!("CARGO_PKG_VERSION").into());
     window.set_status_text("Starting…".into());
@@ -90,27 +92,40 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
         }
     });
 
-    window.on_apply({
+    // Settings are saved and applied as soon as a field changes (text fields when editing
+    // is done). `current` is what is saved, so unchanged fields don't restart anything.
+    let current = Rc::new(RefCell::new(settings.clone()));
+    let apply = {
         let weak = window.as_weak();
         let paths = Rc::clone(&paths);
-        let controller = Arc::clone(&controller);
-        move || {
+        move |done: &str| {
             let Some(window) = weak.upgrade() else { return };
-            let result = read_settings(&window, &paths).and_then(|s| {
-                s.save(&paths.config_file)
-                    .map(|()| s)
-                    .map_err(|e| e.to_string())
-            });
-            match result {
-                Ok(settings) => {
-                    show_settings(&window, &settings, &paths);
-                    set_message(&window, "Settings saved.", false);
-                    tracing::info!(?settings, "settings saved");
-                    controller.apply_settings(&settings);
+            let settings = match read_settings(&window, &paths) {
+                Ok(s) => s,
+                Err(e) => return set_message(&window, &e, true),
+            };
+            if settings == *current.borrow() {
+                // Nothing changed; clear an error from an earlier invalid entry.
+                if window.get_message_is_error() {
+                    set_message(&window, "", false);
                 }
-                Err(e) => set_message(&window, &e, true),
+                return;
             }
+            if let Err(e) = settings.save(&paths.config_file) {
+                return set_message(&window, &capitalize(&e.to_string()), true);
+            }
+            show_settings(&window, &settings, &paths);
+            set_message(&window, done, false);
+            tracing::info!(?settings, "settings saved");
+            *current.borrow_mut() = settings.clone();
+            controller.apply_settings(&settings);
         }
+    };
+    let apply = Rc::new(apply);
+
+    window.on_apply({
+        let apply = Rc::clone(&apply);
+        move || apply("Settings saved.")
     });
 
     window.on_reset_defaults({
@@ -119,11 +134,7 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
         move || {
             let Some(window) = weak.upgrade() else { return };
             show_settings(&window, &Settings::default(), &paths);
-            set_message(
-                &window,
-                "Defaults restored. Click Save settings to keep them.",
-                false,
-            );
+            apply("Defaults restored and saved.");
         }
     });
 
@@ -145,7 +156,7 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
     });
 
     window.on_save_replay(move || {
-        controller.save_replay();
+        save_controller.save_replay();
     });
 }
 

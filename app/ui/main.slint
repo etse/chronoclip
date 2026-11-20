@@ -8,10 +8,24 @@ component Hint inherits Text {
     wrap: word-wrap;
 }
 
+// A text field that reports when editing is done: Enter, or focus leaving the field.
+component SettingField inherits LineEdit {
+    callback committed();
+    accepted => {
+        root.committed();
+    }
+    changed has-focus => {
+        if !self.has-focus {
+            root.committed();
+        }
+    }
+}
+
 component FolderField {
     in property <string> label;
     in-out property <string> path;
     callback open();
+    callback committed();
 
     VerticalLayout {
         spacing: 4px;
@@ -21,9 +35,12 @@ component FolderField {
 
         HorizontalLayout {
             spacing: 8px;
-            LineEdit {
+            SettingField {
                 text <=> root.path;
                 horizontal-stretch: 1;
+                committed => {
+                    root.committed();
+                }
             }
 
             Button {
@@ -158,6 +175,9 @@ export component MainWindow inherits Window {
                                 minimum: 5;
                                 maximum: 45;
                                 value <=> root.buffer-minutes;
+                                released => {
+                                    root.apply();
+                                }
                             }
 
                             Hint {
@@ -175,6 +195,9 @@ export component MainWindow inherits Window {
                                     ComboBox {
                                         model: root.fps-options;
                                         current-value <=> root.fps;
+                                        selected => {
+                                            root.apply();
+                                        }
                                     }
                                 }
 
@@ -187,6 +210,9 @@ export component MainWindow inherits Window {
                                     ComboBox {
                                         model: root.encoder-options;
                                         current-value <=> root.encoder;
+                                        selected => {
+                                            root.apply();
+                                        }
                                     }
                                 }
                             }
@@ -203,6 +229,9 @@ export component MainWindow inherits Window {
                                     ComboBox {
                                         model: root.audio-options;
                                         current-value <=> root.audio;
+                                        selected => {
+                                            root.apply();
+                                        }
                                     }
                                 }
 
@@ -211,6 +240,9 @@ export component MainWindow inherits Window {
                                     Switch {
                                         text: "Microphone (own track)";
                                         checked <=> root.microphone;
+                                        toggled => {
+                                            root.apply();
+                                        }
                                     }
                                 }
                             }
@@ -225,9 +257,12 @@ export component MainWindow inherits Window {
                         title: "Save hotkey";
                         VerticalLayout {
                             spacing: 4px;
-                            LineEdit {
+                            SettingField {
                                 text <=> root.hotkey;
                                 placeholder-text: "Ctrl+F9";
+                                committed => {
+                                    root.apply();
+                                }
                             }
 
                             if root.hotkey-error != "": Hint {
@@ -252,6 +287,9 @@ export component MainWindow inherits Window {
                                 open => {
                                     root.open-folder(root.buffer-dir);
                                 }
+                                committed => {
+                                    root.apply();
+                                }
                             }
 
                             if root.dir-warning != "": Hint {
@@ -265,6 +303,9 @@ export component MainWindow inherits Window {
                                 path <=> root.output-dir;
                                 open => {
                                     root.open-folder(root.output-dir);
+                                }
+                                committed => {
+                                    root.apply();
                                 }
                             }
                         }
@@ -291,13 +332,6 @@ export component MainWindow inherits Window {
                             }
                         }
 
-                        Button {
-                            text: "Save settings";
-                            primary: true;
-                            clicked => {
-                                root.apply();
-                            }
-                        }
                     }
                 }
             }

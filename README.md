@@ -134,9 +134,11 @@ Any of these saves the last *N* minutes (your buffer length) while recording kee
 - click **Save replay** in the window, or **Save replay** in the tray menu,
 - run `chronoclip save`. It waits for the clip and prints its path, so you can also bind it to a key in your desktop's keyboard settings (the way to go on Wayland until the portal hotkey lands).
 
-Clips go to `~/Videos/Chronoclip/Chronoclip_YYYY-MM-DD_HH-MM-SS.mp4` (H.264 + AAC in MP4, plays everywhere, starts instantly in browsers and Discord). The save waits up to two seconds for the moment you pressed the key to be written, then copies the video without re-encoding, so even long clips take seconds. If the WoW window changed size during the buffer, the clip starts at the resize.
+Clips go to `~/Videos/Chronoclip/Chronoclip_YYYY-MM-DD_HH-MM-SS.mp4` (H.264 + AAC in MP4, plays everywhere, starts instantly in browsers and Discord). The save waits up to two seconds for the moment you pressed the key to be written, then copies the video without re-encoding, so even long clips take seconds. If the WoW window changed size during the buffer, the clip starts at the resize. Each save starts where the previous clip ended, so two clips never contain the same footage.
 
 ## Configuration
+
+Settings are changed in the window and saved automatically: lists and switches at once, the slider when you let go, text fields (hotkey, folders) when you press Enter or leave the field.
 
 | Setting | Default | Range / notes |
 |---|---|---|

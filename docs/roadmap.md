@@ -29,10 +29,13 @@ Goal: clips have the game's sound in sync with the video (track 1, plays everywh
 - [x] Settings/UI: audio setting "Game only" (default) / "All sound" / "Off", and the existing "Record microphone" (default off); changes apply with a recorder restart; audio status (capturing WoW / all sound / unavailable) in the window
 - [x] Docs: architecture.md (audio path, decisions, measurements), INSTALL.md (PipeWire runtime/dev packages), README (features, configuration)
 - [x] A clip only contains the current game: when the game is started again (its window reappears, or a new process), the previous game's recording is deleted (after a running save). Not when the game closes, so its end can still be saved afterwards
+- [x] Clips never overlap: a save deletes the saved segments, so the next clip starts where the previous one ended (requested in-game; verified with three saves in a row: 16 s, 10 s, 2 s)
+- [x] Settings save automatically (no Save button): lists and switches at once, the slider on release, text fields on Enter or leaving the field; unchanged values restart nothing (requested in-game: "All sound" was picked but never saved)
 - [ ] Verified with a test tone: A/V offset < 1 frame at the start and end of a 45 min clip and across a window resize; clip plays with sound in mpv, Firefox and Discord; CPU cost of audio measured
   - In-game finding: WoW (Proton via Faugus) is a native PipeWire client; through pipewire-pulse its stream has only `application.name = "World of Warcraft"`, so "game only" first fell back to all sound. Fixed by also matching the application name / window title; verified against running WoW (`finds_running_wow_stream`)
   - Done: 40 s and 10 min clips (no drift, offset within ffplay's own sync), window closed/reopened mid-clip, *All sound* + mic tracks, mpv playback, CPU (+1.2 % of one core); see architecture.md. Open: 45 min clip, Firefox and Discord
-- [ ] Verified in-game: "Game only" has WoW sound without Discord/music; "All sound" includes Discord; mic track with own voice when enabled
+- [x] Verified in-game: "Game only" has WoW sound without Discord/music; "All sound" includes Discord; mic track with own voice when enabled
+  - "Game only" records WoW sound and leaves out Discord and YouTube; "All sound" includes browser audio; the mic track (track 2) has finger snaps as clear peaks over a quiet background (maintainer, 2026-11-20). Players, browsers and Discord play only track 1
 
 Out of scope: volume controls, mixing the mic into the game track, picking individual apps or devices (later, with M9), noise suppression.
 
