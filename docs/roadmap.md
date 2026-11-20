@@ -15,6 +15,24 @@ Status: ✅ done · 🚧 in progress · ⬜ not started
 | M8 | Better-looking UI (nice to have): visual redesign, theming, icons | ⬜ |
 | M9 | Other games (long term): record any game, not just WoW: window picker, game detection, per-game clips | ⬜ |
 
+## M4: Audio
+
+Goal: clips have the game's sound in sync with the video (track 1, plays everywhere), and optionally the microphone as a separate track 2. Audio is captured with PipeWire, encoded to AAC and written into the same 2 s segments as the video, so saving stays a remux.
+
+- [ ] Decide the PipeWire binding (spike): `pipewire` crate (needs `libpipewire-0.3-dev` + clang to build) vs. loading `libpipewire-0.3` at runtime vs. FFmpeg's `pulse` input via pipewire-pulse. Criteria: per-app capture, latency/timestamps, build and runtime dependencies (AGENTS rule 9). Record the choice in architecture.md (an ADR if it adds a build dependency)
+- [ ] `chronoclip-capture`: `AudioSource` with two modes: **game only** captures the WoW (Wine/Proton) output stream, found by its process like the window; **all sound** captures the default output's monitor (game + Discord, music, …). Game only falls back to all sound when no WoW stream exists. Follows the stream/device when it is recreated (device change, game restart)
+- [ ] `chronoclip-capture`: microphone source (default input), only while the setting is on
+- [ ] `chronoclip-core`: audio timeline logic (unit tested): map capture timestamps to the video clock, insert silence for gaps (game silent, stream recreated) so the track stays continuous and in sync
+- [ ] `chronoclip-encode`: AAC encoder (FFmpeg's built-in `aac`, LGPL), 48 kHz stereo, ~160 kbit/s; segment writer muxes video + 1 or 2 audio streams into the MPEG-TS segments, cut on video keyframes
+- [ ] Recorder: audio thread(s) → bounded channel → writer, sharing one clock with video; audio starts and ends with each video session; a capture failure (no PipeWire, stream gone) logs and records video only instead of stopping
+- [ ] Remux: copy all streams; rebase every stream with the same offset at segment joins so audio stays in sync; mark track 1 as default ("Game") and track 2 as "Microphone"; still works for video-only segments
+- [ ] Settings/UI: audio setting "Game only" (default) / "All sound" / "Off", and the existing "Record microphone" (default off); changes apply with a recorder restart; audio status (capturing WoW / all sound / unavailable) in the window
+- [ ] Docs: architecture.md (audio path, decisions, measurements), INSTALL.md (PipeWire runtime/dev packages), README (features, configuration)
+- [ ] Verified with a test tone: A/V offset < 1 frame at the start and end of a 45 min clip and across a window resize; clip plays with sound in mpv, Firefox and Discord; CPU cost of audio measured
+- [ ] Verified in-game: "Game only" has WoW sound without Discord/music; "All sound" includes Discord; mic track with own voice when enabled
+
+Out of scope: volume controls, mixing the mic into the game track, picking individual apps or devices (later, with M9), noise suppression.
+
 ## M3: Save replay
 
 Goal: pressing the hotkey (default `Ctrl+F9`), clicking Save in the window or tray, or running `chronoclip save` writes the last N minutes as an MP4 to the output folder within seconds, by stream copy, while recording continues.
