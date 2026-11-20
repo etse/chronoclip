@@ -141,8 +141,8 @@ fn show_settings(window: &MainWindow, settings: &Settings, paths: &Paths) {
     window.set_fps(settings.fps.to_string().into());
     window.set_encoder(encoder_label(settings.encoder).into());
     window.set_microphone(settings.microphone);
-    window.set_buffer_dir(settings.buffer_dir(paths).display().to_string().into());
-    window.set_output_dir(settings.output_dir(paths).display().to_string().into());
+    window.set_buffer_dir(paths.contract_home(&settings.buffer_dir(paths)).into());
+    window.set_output_dir(paths.contract_home(&settings.output_dir(paths)).into());
 }
 
 fn read_settings(window: &MainWindow, paths: &Paths) -> Result<Settings, String> {

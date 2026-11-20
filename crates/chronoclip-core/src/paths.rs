@@ -53,6 +53,16 @@ impl Paths {
         })
     }
 
+    /// Display form of `path`: inside the home directory it starts with `~`, which is shorter
+    /// and reads back through [`expand_home`](Self::expand_home).
+    pub fn contract_home(&self, path: &Path) -> String {
+        match path.strip_prefix(&self.home_dir) {
+            Ok(rest) if rest.as_os_str().is_empty() => "~".into(),
+            Ok(rest) => format!("~/{}", rest.display()),
+            Err(_) => path.display().to_string(),
+        }
+    }
+
     /// Expand a leading `~` to the home directory.
     pub fn expand_home(&self, path: &str) -> PathBuf {
         match path.strip_prefix('~') {
@@ -85,5 +95,24 @@ mod tests {
         assert_eq!(p.expand_home("~/clips"), PathBuf::from("/home/me/clips"));
         assert_eq!(p.expand_home("/mnt/ssd"), PathBuf::from("/mnt/ssd"));
         assert_eq!(p.expand_home("~other/x"), PathBuf::from("~other/x"));
+    }
+
+    #[test]
+    fn contracts_home_for_display() {
+        let p = paths();
+        assert_eq!(
+            p.contract_home(&p.default_output_dir),
+            "~/Videos/Chronoclip"
+        );
+        assert_eq!(p.contract_home(Path::new("/home/me")), "~");
+        assert_eq!(
+            p.contract_home(Path::new("/mnt/ssd/clips")),
+            "/mnt/ssd/clips"
+        );
+        // A sibling that only shares the prefix is not inside home.
+        assert_eq!(p.contract_home(Path::new("/home/meow")), "/home/meow");
+        // Round trip.
+        let shown = p.contract_home(&p.default_buffer_dir);
+        assert_eq!(p.expand_home(&shown), p.default_buffer_dir);
     }
 }
