@@ -123,6 +123,7 @@ Detailed status and task checklists: [docs/roadmap.md](docs/roadmap.md).
 7. **M6, Wayland + AMD/Intel**: portal/PipeWire capture, GlobalShortcuts portal, VAAPI
 8. **M7, packaging**: .deb (Mint/Ubuntu), AppImage, Flatpak, AUR
 9. **M8, better-looking UI** (nice to have): visual redesign of the window and tray menu, consistent theming (light/dark), icons
+10. **M9, other games** (long term): record any game, not just WoW: pick the window to record, detect common games, name clips after the game
 
 ## Non-goals
 

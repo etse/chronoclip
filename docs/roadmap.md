@@ -13,6 +13,7 @@ Status: ✅ done · 🚧 in progress · ⬜ not started
 | M6 | Wayland + AMD/Intel: portal/PipeWire capture, GlobalShortcuts portal, VAAPI | ⬜ |
 | M7 | Packaging: .deb, AppImage, Flatpak, AUR | ⬜ |
 | M8 | Better-looking UI (nice to have): visual redesign, theming, icons | ⬜ |
+| M9 | Other games (long term): record any game, not just WoW: window picker, game detection, per-game clips | ⬜ |
 
 ## M3: Save replay
 
@@ -29,7 +30,7 @@ Goal: pressing the hotkey (default `Ctrl+F9`), clicking Save in the window or tr
 - [x] Feedback: last saved clip and save errors in the UI status and tray tooltip; "Open folder" for the output folder (desktop notifications come in M5)
 - [x] Docs: architecture.md (save path, decisions), INSTALL.md if dependencies change, README usage
 - [x] Verified: glxgears save at 5 and 45 min buffers (45 min: 7.3 GB clip in 6.0 s); duration and frame count match, every join frame-exact, seeks and decodes cleanly in FFmpeg; save time measured (see architecture.md)
-- [x] Verified in-game: hotkey works while WoW (borderless) has focus; clip looks good
+- [x] Verified in-game: hotkey works while WoW (borderless) has focus; clip looks good; game stayed smooth in light play (heavy content like raids not tested yet)
 
 Out of scope: audio (M4), notifications and clip library (M5), Wayland GlobalShortcuts portal (M6; `chronoclip save` is the fallback there). Trimming or editing clips is not planned.
 
