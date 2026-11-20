@@ -22,7 +22,9 @@ libc = "0.2"
 libloading = "0.8"
 rustix = { version = "1", features = ["fs"] }
 serde = { version = "1", features = ["derive"] }
-slint = "1"
+# Default features minus `renderer-femtovg`: the software renderer draws text on whole pixels
+# (femtovg made labels wavy) and keeps OpenGL out of the UI, next to our own GLX capture.
+slint = { version = "1.19", default-features = false, features = ["std", "backend-default", "renderer-software", "accessibility", "compat-1-2", "system-tray"] }
 slint-build = "1"
 tempfile = "3"
 thiserror = "2"

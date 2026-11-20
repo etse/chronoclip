@@ -140,6 +140,7 @@ Stopping the recorder (quit, or a settings change that restarts it) waits for a 
 - **Clips include the moment of the press:** a save waits for the open segment (up to one segment length) instead of saving instantly without the last ≤ 2 s.
 - **One save at a time:** a second request while saving is refused rather than queued.
 - **A clip never spans a resolution change**; segments of separate sessions at the same size are joined, without the gap.
+- **Slint software renderer** instead of femtovg (OpenGL): femtovg drew text on fractional pixels, so labels in some rows looked wavy. The software renderer snaps text to whole pixels, keeps OpenGL out of the UI (only our GLX capture uses it) and makes the build smaller. A small settings window doesn't need GPU rendering.
 - **`+faststart`** although it rewrites the file once at the end: compatibility (browsers, Discord) over a few seconds on very long clips.
 
 ## Open questions

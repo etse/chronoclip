@@ -28,7 +28,7 @@ Windows players have ShadowPlay, ReLive, Medal and friends. On Linux the options
 | Layer | Choice |
 |---|---|
 | Language | Rust (single Cargo workspace, no Node / JS toolchain) |
-| UI | Slint (native, GPU or software rendered) |
+| UI | Slint (native, software renderer: crisp text, no OpenGL in the UI) |
 | Video capture | XComposite → OpenGL texture (X11, GPU-only path), xdg-desktop-portal ScreenCast + PipeWire (Wayland) |
 | Audio capture | PipeWire |
 | Encoding / muxing | FFmpeg (libav*, LGPL, dynamically linked): NVENC (via CUDA), VAAPI |
