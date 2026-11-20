@@ -125,6 +125,7 @@ Triggers: the hotkey, the window's **Save replay** button, the tray menu, and `c
 3. **Check free space** in the clips folder (`statvfs`): clip size ≈ segment size, plus 5 % or 256 MB headroom.
 4. **Remux** (`chronoclip_encode::remux_to_mp4`): stream copy into `.<name>.mp4.part`, then rename to `Chronoclip_YYYY-MM-DD_HH-MM-SS.mp4` (`_2`, `_3` on collision). The first segment is probed fully for the SPS/PPS; the rest are opened without `avformat_find_stream_info`, which would decode a frame per segment. Timestamps are rebased to start at 0; a file whose timestamps jump back (new encoder session) or more than 1 s forward is attached one frame after the previous packet. `+faststart` puts the `moov` atom first so clips start instantly in browsers and chat apps.
 5. **Unpin**, which deletes segments that were pruned meanwhile, and report the result in the window, the tray tooltip and to the IPC caller.
+6. **Consume:** after a successful save, the saved segments are deleted from the buffer, so the next clip starts where this one ended and clips never overlap (joining clips is a job for an editor). Segments recorded during the save stay. A save right after another one contains just the segment that was open at the press; with nothing at all left it says "Nothing new recorded since the last clip".
 
 Stopping the recorder (quit, or a settings change that restarts it) waits for a running save before deleting the buffer.
 

@@ -123,6 +123,24 @@ impl SegmentIndex {
         removed
     }
 
+    /// Remove all segments up to and including `seq` (they were saved into a clip, so the
+    /// next clip starts after them). Returns the ones to delete; pinned ones are deferred.
+    pub fn remove_through(&mut self, seq: u64) -> Vec<Segment> {
+        let mut removed = Vec::new();
+        while self.segments.front().is_some_and(|s| s.seq <= seq) {
+            if let Some(oldest) = self.segments.pop_front() {
+                self.total_duration = self.total_duration.saturating_sub(oldest.duration);
+                self.total_bytes = self.total_bytes.saturating_sub(oldest.bytes);
+                if self.pinned_from.is_some_and(|from| oldest.seq >= from) {
+                    self.deferred.push(oldest);
+                } else {
+                    removed.push(oldest);
+                }
+            }
+        }
+        removed
+    }
+
     /// The newest segments that together cover at least `length` (or everything available),
     /// oldest first. Only segments that can be joined with the newest one (same `stream`) are
     /// included, so a clip never spans a change of resolution.
@@ -379,5 +397,29 @@ mod tests {
     #[test]
     fn retention_minutes() {
         assert_eq!(retention_for_minutes(10), Duration::from_secs(600));
+    }
+
+    #[test]
+    fn remove_through_drops_saved_segments() {
+        let mut index = SegmentIndex::new(Duration::from_secs(60));
+        for seq in 0..5 {
+            let _ = index.push(seg(seq, 2));
+        }
+        let removed: Vec<u64> = index.remove_through(2).iter().map(|s| s.seq).collect();
+        assert_eq!(removed, vec![0, 1, 2]);
+        assert_eq!(index.len(), 2);
+        assert_eq!(index.total_duration(), Duration::from_secs(4));
+        assert_eq!(
+            index
+                .select_for_save(Duration::from_secs(60))
+                .iter()
+                .map(|s| s.seq)
+                .collect::<Vec<_>>(),
+            vec![3, 4]
+        );
+        // Pinned segments are deferred, not deleted.
+        index.pin(3);
+        assert!(index.remove_through(3).is_empty());
+        assert_eq!(index.unpin().len(), 1);
     }
 }

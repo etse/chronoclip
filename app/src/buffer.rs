@@ -19,6 +19,8 @@ pub struct ReplayBuffer {
     changed: Condvar,
     /// Titles of the audio tracks in the segments, in stream order.
     audio_tracks: Mutex<Vec<String>>,
+    /// A clip was saved from this buffer (so an empty buffer means "nothing new").
+    saved: std::sync::atomic::AtomicBool,
 }
 
 impl ReplayBuffer {
@@ -30,7 +32,26 @@ impl ReplayBuffer {
             }),
             changed: Condvar::new(),
             audio_tracks: Mutex::new(Vec::new()),
+            saved: std::sync::atomic::AtomicBool::new(false),
         }
+    }
+
+    /// Save: segments up to `seq` are in a clip now; delete them so the next clip starts
+    /// where this one ended. Call after the save released its pin.
+    pub fn consume_through(&self, seq: u64) {
+        let removed = {
+            let mut state = self.lock();
+            let removed = state.index.remove_through(seq);
+            self.changed.notify_all();
+            removed
+        };
+        self.saved.store(true, std::sync::atomic::Ordering::Relaxed);
+        delete(removed);
+    }
+
+    /// True if a clip was saved from this buffer before.
+    pub fn has_saved(&self) -> bool {
+        self.saved.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Recorder: the audio tracks its segments contain (set once, before recording).
@@ -223,6 +244,35 @@ mod tests {
         assert!(segments.iter().all(|s| !s.path.exists()));
         assert_eq!(buffer.stats(), (Duration::ZERO, 0));
         assert!(buffer.pin_for_save().is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn consumed_segments_are_not_saved_again() -> std::io::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let retention = Duration::from_secs(60);
+        let buffer = Arc::new(ReplayBuffer::new(retention));
+        for seq in 0..3 {
+            buffer.add_segment(segment(dir.path(), seq), retention);
+        }
+        let pinned = buffer.pin_for_save().ok_or(std::io::ErrorKind::NotFound)?;
+        let last = pinned.segments.last().map_or(0, |s| s.seq);
+        // Recorded while the clip was saved.
+        buffer.add_segment(segment(dir.path(), 3), retention);
+        drop(pinned);
+        assert!(!buffer.has_saved());
+        buffer.consume_through(last);
+        assert!(buffer.has_saved());
+        let next = buffer.pin_for_save().ok_or(std::io::ErrorKind::NotFound)?;
+        assert_eq!(
+            next.segments.iter().map(|s| s.seq).collect::<Vec<_>>(),
+            vec![3]
+        );
+        assert!(
+            !dir.path()
+                .join(chronoclip_core::segments::segment_file_name(0))
+                .exists()
+        );
         Ok(())
     }
 

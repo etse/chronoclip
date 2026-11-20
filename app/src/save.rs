@@ -50,9 +50,12 @@ impl SavedClip {
 pub fn save_replay(buffer: &Arc<ReplayBuffer>, output_dir: &Path) -> Result<SavedClip, String> {
     let started = std::time::Instant::now();
     buffer.wait_for_open_segment(OPEN_SEGMENT_WAIT);
-    let pinned = buffer
-        .pin_for_save()
-        .ok_or("Nothing recorded yet. Start World of Warcraft and try again in a few seconds.")?;
+    let pinned = buffer.pin_for_save().ok_or(if buffer.has_saved() {
+        "Nothing new recorded since the last clip."
+    } else {
+        "Nothing recorded yet. Start World of Warcraft and try again in a few seconds."
+    })?;
+    let last_seq = pinned.segments.last().map(|s| s.seq);
 
     std::fs::create_dir_all(output_dir).map_err(|e| {
         format!(
@@ -87,6 +90,10 @@ pub fn save_replay(buffer: &Arc<ReplayBuffer>, output_dir: &Path) -> Result<Save
     if let Err(e) = std::fs::rename(&partial, &path) {
         let _ = std::fs::remove_file(&partial);
         return Err(format!("Could not write {}: {e}", path.display()));
+    }
+    // The next clip starts where this one ended: clips never overlap.
+    if let Some(seq) = last_seq {
+        buffer.consume_through(seq);
     }
     if stats.skipped_segments > 0 {
         tracing::warn!(
