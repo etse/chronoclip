@@ -59,7 +59,7 @@ Works today (X11 + NVIDIA):
 
 Planned (see [Roadmap](#roadmap)):
 
-- **Notifications** when a clip is saved, a clip library, autostart.
+- **Notifications** and a chime when a clip is saved, tray icon that shows the recording state, start with the desktop.
 - **Wayland** (screen capture and hotkey through portals) and **AMD / Intel** GPUs (VAAPI).
 - **Packages**: .deb, AppImage, Flatpak, AUR.
 - **Other games** besides WoW.
@@ -163,11 +163,11 @@ Detailed status and task checklists: [docs/roadmap.md](docs/roadmap.md).
 3. **M2, capture pipeline (X11 + NVIDIA)** ✅ XComposite window capture → GL texture → CUDA → NVENC → rolling segments
 4. **M3, save replay** ✅ X11 global hotkey → lossless remux of the last N minutes to MP4
 5. **M4, audio** ✅ game audio via PipeWire (game only or all sound), optional mic track
-6. **M5, polish**: notifications, clip library, autostart, WoW window auto-detection
-7. **M6, Wayland + AMD/Intel**: portal/PipeWire capture, GlobalShortcuts portal, VAAPI
-8. **M7, packaging**: .deb (Mint/Ubuntu), AppImage, Flatpak, AUR
-9. **M8, better-looking UI** (nice to have): visual redesign of the window and tray menu, consistent theming (light/dark), icons
-10. **M9, other games** (long term): record any game, not just WoW: pick the window to record, detect common games, name clips after the game
+6. **M5, polish**: save notification and chime, tray state, start with desktop
+7. **M6, packaging**: .deb (Mint/Ubuntu), AppImage, Flatpak, AUR
+8. **M7, better-looking UI** (nice to have): visual redesign of the window and tray menu, consistent theming (light/dark), icons
+9. **M8, other games** (long term): record any game, not just WoW: pick the window to record, detect common games, name clips after the game
+10. **M9, Wayland + AMD/Intel**: portal/PipeWire capture, GlobalShortcuts portal, VAAPI
 
 ## Non-goals
 

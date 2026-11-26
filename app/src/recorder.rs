@@ -218,7 +218,7 @@ fn run(
         EncoderPreference::Auto | EncoderPreference::Nvenc
     ) {
         on_status(RecorderStatus::Error(
-            "Only the NVENC encoder is supported so far (VAAPI and software come in milestone 6)."
+            "Only the NVENC encoder is supported so far (VAAPI and software come in milestone 9)."
                 .into(),
         ));
         while !sleep_unless_stopped(stop, Duration::from_secs(1)) {}

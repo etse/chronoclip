@@ -1,5 +1,5 @@
 //! Global hotkey: picks the backend for the session. X11 uses a key grab; Wayland gets the
-//! GlobalShortcuts portal later (milestone 6). Without a backend, users bind `chronoclip save`
+//! GlobalShortcuts portal later (milestone 9). Without a backend, users bind `chronoclip save`
 //! in their desktop's keyboard settings.
 
 use chronoclip_capture::{HotkeyError, X11Hotkey};

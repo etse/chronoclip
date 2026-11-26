@@ -9,11 +9,25 @@ Status: ✅ done · 🚧 in progress · ⬜ not started
 | M2 | Capture pipeline (X11 + NVIDIA) | ✅ |
 | M3 | Save replay: global hotkey, lossless remux to MP4 | ✅ |
 | M4 | Audio: game audio via PipeWire, optional mic track | ✅ |
-| M5 | Polish: notifications, clip library, autostart, WoW auto-detection | ⬜ |
-| M6 | Wayland + AMD/Intel: portal/PipeWire capture, GlobalShortcuts portal, VAAPI | ⬜ |
-| M7 | Packaging: .deb, AppImage, Flatpak, AUR | ⬜ |
-| M8 | Better-looking UI (nice to have): visual redesign, theming, icons | ⬜ |
-| M9 | Other games (long term): record any game, not just WoW: window picker, game detection, per-game clips | ⬜ |
+| M5 | Polish: save notification and chime, tray state, start with desktop | 🚧 |
+| M6 | Packaging: .deb, AppImage, Flatpak, AUR | ⬜ |
+| M7 | Better-looking UI (nice to have): visual redesign, theming, icons | ⬜ |
+| M8 | Other games (long term): record any game, not just WoW: window picker, game detection, per-game clips | ⬜ |
+| M9 | Wayland + AMD/Intel: portal/PipeWire capture, GlobalShortcuts portal, VAAPI | ⬜ |
+
+## M5: Polish
+
+Goal: you notice every save, even in-game; you can see at a glance whether Chronoclip is recording; it starts by itself at login.
+
+- [ ] Save chime: a short chime generated in code (no sound file), played through the sound server (`libpulse`, already loaded) when a clip is saved; a different short tone on a failed save. Setting "Play a sound when saving", **on** by default
+- [ ] Desktop notification (`org.freedesktop.Notifications` via `notify-rust`, no system dependency): "Clip saved · 10:00 · 1.4 GB" with **Play** and **Show in folder** actions; save errors notify too. Cinnamon hides notifications over fullscreen windows by default, so the chime is the in-game feedback
+- [ ] Tray icon shows state: red while recording, grey while waiting for WoW, warning icon on errors; tooltip unchanged
+- [ ] Start with desktop: settings switch that writes/removes `~/.config/autostart/chronoclip.desktop` (`Exec=<binary> --hidden`); default off; reflects the file's actual state
+- [ ] WoW detection: already in place since M2/M4 (waits for `Wow.exe`, starts and restarts by itself); check WoW Classic if available, then tick off
+- [ ] Docs: README (features, settings), architecture.md (notifications, chime), INSTALL.md only if dependencies change
+- [ ] Verified in-game: chime audible in WoW (borderless) on save; notification after alt-tab; tray icon colors; autostart after a re-login
+
+Out of scope: clip library (dropped for now), trimming or editing clips, uploading or sharing, visual redesign (M7).
 
 ## M4: Audio
 
@@ -38,7 +52,7 @@ Goal: clips have the game's sound in sync with the video (track 1, plays everywh
 - [x] Verified in-game: "Game only" has WoW sound without Discord/music; "All sound" includes Discord; mic track with own voice when enabled
   - "Game only" records WoW sound and leaves out Discord and YouTube; "All sound" includes browser audio; the mic track (track 2) has finger snaps as clear peaks over a quiet background (maintainer, 2026-11-20). Players, browsers and Discord play only track 1
 
-Out of scope: volume controls, mixing the mic into the game track, picking individual apps or devices (later, with M9), noise suppression.
+Out of scope: volume controls, mixing the mic into the game track, picking individual apps or devices (later, with M8), noise suppression.
 
 ## M3: Save replay
 
@@ -57,7 +71,7 @@ Goal: pressing the hotkey (default `Ctrl+F9`), clicking Save in the window or tr
 - [x] Verified: glxgears save at 5 and 45 min buffers (45 min: 7.3 GB clip in 6.0 s); duration and frame count match, every join frame-exact, seeks and decodes cleanly in FFmpeg; save time measured (see architecture.md)
 - [x] Verified in-game: hotkey works while WoW (borderless) has focus; clip looks good; game stayed smooth in light play (heavy content like raids not tested yet)
 
-Out of scope: audio (M4), notifications and clip library (M5), Wayland GlobalShortcuts portal (M6; `chronoclip save` is the fallback there). Trimming or editing clips is not planned.
+Out of scope: audio (M4), notifications and clip library (M5), Wayland GlobalShortcuts portal (M9; `chronoclip save` is the fallback there). Trimming or editing clips is not planned.
 
 ## M2: Capture pipeline (X11 + NVIDIA)
 
@@ -73,7 +87,7 @@ Goal: while the app runs, the WoW window is continuously encoded with NVENC into
 - [x] Verified: glxgears at 2560×1368 @ 60 fps, segments decode and join into an MP4, overhead measured (see architecture.md)
 - [x] Verified in-game: WoW (DX12, borderless windowed, 2560×1440 @ 60) via Faugus: game stays smooth, ~3 frames skipped, segments play in mpv. Uses copy mode (see architecture.md).
 
-Out of scope: saving clips (M3), audio (M4), VAAPI/software encoders (M6). A window resize restarts the recorder at the new size.
+Out of scope: saving clips (M3), audio (M4), VAAPI/software encoders (M9). A window resize restarts the recorder at the new size.
 
 ## Later milestones
 

@@ -143,7 +143,7 @@ Stopping the recorder (quit, or a settings change that restarts it) waits for a 
 
 ## Decisions made in M3
 
-- **Global hotkey: own `XGrabKey` code**, not the `global-hotkey` crate: no extra dependency (we already load Xlib), and full control over Caps Lock / Num Lock and over reporting a key that is already taken. Lives in `chronoclip-capture`, the crate that holds the X11 FFI. Wayland will use the GlobalShortcuts portal (M6).
+- **Global hotkey: own `XGrabKey` code**, not the `global-hotkey` crate: no extra dependency (we already load Xlib), and full control over Caps Lock / Num Lock and over reporting a key that is already taken. Lives in `chronoclip-capture`, the crate that holds the X11 FFI. Wayland will use the GlobalShortcuts portal (M9).
 - **Clips include the moment of the press:** a save waits for the open segment (up to one segment length) instead of saving instantly without the last ≤ 2 s.
 - **One save at a time:** a second request while saving is refused rather than queued.
 - **A clip never spans a resolution change**; segments of separate sessions at the same size are joined, without the gap.
