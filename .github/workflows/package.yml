@@ -1,0 +1,116 @@
+name: Package
+
+# Builds the .deb in an Ubuntu 22.04 container (oldest supported base, so its minimum library
+# versions fit every newer system), then installs, runs and removes it on 22.04, 24.04 and 26.04.
+# The release workflow will call this one (workflow_call) to attach the result to a release.
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "crates/**"
+      - "packaging/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/package.yml"
+  pull_request:
+    paths:
+      - "app/**"
+      - "crates/**"
+      - "packaging/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/package.yml"
+
+env:
+  CARGO_TERM_COLOR: always
+  DEBIAN_FRONTEND: noninteractive
+
+jobs:
+  deb:
+    name: Build .deb (Ubuntu 22.04)
+    runs-on: ubuntu-24.04
+    container: ubuntu:22.04
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential nasm curl ca-certificates git \
+            xz-utils pkg-config clang libclang-dev libfontconfig1-dev libxkbcommon-dev python3 \
+            dpkg-dev file
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/cargo-about
+            target/bundled
+            target/ffmpeg-src
+          key: deb-ubuntu2204-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'packaging/ffmpeg/build.sh') }}
+          restore-keys: deb-ubuntu2204-
+      - name: Install cargo-about
+        run: command -v cargo-about || cargo install cargo-about --locked --features cli
+      - name: Build .deb
+        run: packaging/deb/build.sh dist
+      - name: Show package
+        run: |
+          dpkg-deb -I dist/*.deb
+          dpkg-deb -c dist/*.deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: dist/*.deb
+          if-no-files-found: error
+
+  install:
+    name: Install on ${{ matrix.image }}
+    needs: deb
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["ubuntu:22.04", "ubuntu:24.04", "ubuntu:26.04"]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: deb
+      - name: Install
+        run: |
+          apt-get update
+          apt-get install -y ./chronoclip_*.deb
+      - name: Check
+        run: |
+          set -euo pipefail
+          chronoclip --version
+          if ldd /usr/bin/chronoclip | grep "not found"; then exit 1; fi
+          ldd /usr/bin/chronoclip | grep -q "=> /usr/lib/chronoclip/libavcodec.so"
+          # Libraries the app loads at runtime must come with the package's dependencies.
+          for lib in libX11.so.6 libX11-xcb.so.1 libxcb.so.1 libXcursor.so.1 libXi.so.6 \
+                     libxkbcommon.so.0 libxkbcommon-x11.so.0 libXcomposite.so.1 libGL.so.1 \
+                     libpulse.so.0 libpulse-simple.so.0; do
+            ldconfig -p | grep -q "$lib " || { echo "missing $lib"; exit 1; }
+          done
+          command -v xdg-open
+          test -f /usr/share/applications/io.github.etse.chronoclip.desktop
+          test -f /usr/share/icons/hicolor/256x256/apps/io.github.etse.chronoclip.png
+          test -f /usr/share/metainfo/io.github.etse.chronoclip.metainfo.xml
+          test -f /usr/share/doc/chronoclip/FFMPEG-LICENSE.txt
+      - name: Remove
+        run: |
+          apt-get remove -y chronoclip
+          test ! -e /usr/bin/chronoclip
+          test ! -e /usr/lib/chronoclip

@@ -32,7 +32,7 @@ including the GPU, audio and hotkey tests, to pass (84 at the time of writing).
 CHRONOCLIP_BIN=target/stage/usr/bin/chronoclip .agents/skills/test-instance/scripts/test-instance.sh start …
 ```
 
-`stage.sh` links the binary with the runpath `$ORIGIN/../lib/chronoclip` (the layout of both the
+`stage.sh` (a wrapper around `packaging/stage.sh`, which `packaging/deb/build.sh` also uses) links the binary with the runpath `$ORIGIN/../lib/chronoclip` (the layout of both the
 .deb and the AppImage) and fails if `ldd` resolves any FFmpeg library from outside the stage.
 Then record and save with the test-instance skill and check the clip:
 `ffprobe -v error -show_entries stream=codec_name,sample_rate,channels CLIP` must list `h264`

@@ -16,31 +16,42 @@ This file lists **everything you need to install**, for:
 | Requirement | Why | How to check |
 |---|---|---|
 | **X11 session** | Window capture and the hotkey use X11 (Wayland support is planned). Linux Mint Cinnamon, MATE and Xfce use X11 by default. | `echo $XDG_SESSION_TYPE` prints `x11` |
-| **NVIDIA GPU + proprietary driver** (535 or newer) | Hardware video encoding (NVENC) and GPU capture (CUDA). AMD/Intel support is planned. | `nvidia-smi` shows your GPU |
-| **FFmpeg libraries** (version 6 or newer) | Video and audio encoding and file writing | `ffmpeg -hide_banner -encoders \| grep h264_nvenc` |
-| **PipeWire** (with `pipewire-pulse`) or **PulseAudio** | Recording game sound and the microphone. Default on Linux Mint 22 / Ubuntu 24.04 and practically every desktop. Without it, clips have a silent audio track. | `pactl info` prints a `Server Name` |
+| **NVIDIA GPU + proprietary driver** (530 or newer) | Hardware video encoding (NVENC) and GPU capture (CUDA). AMD/Intel support is planned. | `nvidia-smi` shows your GPU |
+| **PipeWire** (with `pipewire-pulse`) or **PulseAudio** | Recording game sound and the microphone. Default on Linux Mint / Ubuntu and practically every desktop. Without it, clips have a silent audio track. | `pactl info` prints a `Server Name` |
 
-### Install (Linux Mint / Ubuntu)
+FFmpeg is **not** needed: the packages bring their own (LGPL, about 3 MB, only what Chronoclip uses).
+
+### Install on Ubuntu / Linux Mint (.deb)
+
+Works on Ubuntu 22.04, 24.04, 26.04 and Linux Mint 21, 22, 23.
 
 1. **NVIDIA driver:** open *Driver Manager* (Mint) or *Additional Drivers* (Ubuntu) and pick the recommended `nvidia-driver-XXX`. It includes NVENC and CUDA, so there's nothing extra to install.
-2. **FFmpeg libraries:**
+2. **Chronoclip:** download `chronoclip_<version>_amd64.deb` from [GitHub Releases](https://github.com/etse/chronoclip/releases) and double-click it, or:
    ```sh
-   sudo apt install ffmpeg
+   sudo apt install ./chronoclip_*_amd64.deb
    ```
+   apt installs the few system libraries it needs (X11, OpenGL, PulseAudio; all normally present already).
+3. Start **Chronoclip** from the app menu (Sound & Video).
 
-That's it. Everything else Chronoclip needs is already part of every Linux X11 desktop:
+To remove it: `sudo apt remove chronoclip`. Your settings (`~/.config/chronoclip`), saved clips (`~/Videos/Chronoclip`) and, if you turned it on, the autostart entry (`~/.config/autostart/chronoclip.desktop`) stay; delete them by hand if you like.
+
+What the .deb installs: `/usr/bin/chronoclip`, FFmpeg in `/usr/lib/chronoclip/`, the menu entry, icons and license files (`/usr/share/doc/chronoclip/`).
+
+### Runtime libraries
+
+Everything Chronoclip loads from the system is part of every Linux X11 desktop (the .deb depends on these packages):
 
 | Runtime library | Package (Mint / Ubuntu) | Used for |
 |---|---|---|
 | `libcuda.so.1`, `libnvidia-encode.so.1` | part of the NVIDIA driver | GPU copy (CUDA) and encoding (NVENC) |
-| `libX11.so.6`, `libXcomposite.so.1` | `libx11-6`, `libxcomposite1` | Finding and capturing the WoW window, and the global hotkey |
-| `libGL.so.1` (GLX) | `libgl1` | Reading the window image on the GPU |
-| `libavcodec`, `libavformat`, `libavutil` | installed with `ffmpeg` | Encoding and writing video files |
+| `libX11.so.6`, `libX11-xcb.so.1`, `libxcb.so.1`, `libXcursor.so.1`, `libXi.so.6`, `libxkbcommon.so.0`, `libxkbcommon-x11.so.0`, `libfontconfig.so.1` | `libx11-6`, `libx11-xcb1`, `libxcb1`, `libxcursor1`, `libxi6`, `libxkbcommon0`, `libxkbcommon-x11-0`, `libfontconfig1` | The window, tray and fonts (Slint / winit) |
+| `libXcomposite.so.1`, `libGL.so.1` (GLX) | `libxcomposite1`, `libgl1` | Finding and capturing the WoW window on the GPU, and the global hotkey |
 | `libpulse.so.0`, `libpulse-simple.so.0` | `libpulse0` (installed with PipeWire's `pipewire-pulse` or PulseAudio) | Recording sound through the PulseAudio API, which PipeWire provides, and playing the save chime |
+| `xdg-open` | `xdg-utils` | **Play** and **Show in folder** / **Open** buttons |
+| `libavcodec`, `libavformat`, `libavutil` | bundled with Chronoclip (`/usr/lib/chronoclip`) | Encoding and writing video files |
 
 | | Mint / Ubuntu / Debian | Arch | Fedora |
 |---|---|---|---|
-| FFmpeg libraries | `ffmpeg` | `ffmpeg` | `ffmpeg-libs` (RPM Fusion) |
 | NVIDIA driver | Driver Manager / `nvidia-driver-XXX` | `nvidia` | `akmod-nvidia` (RPM Fusion) |
 | Sound (PulseAudio API) | `pipewire-pulse` (default) | `pipewire-pulse` | `pipewire-pulseaudio` (default) |
 
@@ -103,6 +114,7 @@ Only needed to change icons, check the app metadata or build the license file th
 | `desktop-file-validate`, `appstreamcli` | `sudo apt install desktop-file-utils appstream` | Checking `packaging/linux/*.desktop` and `*.metainfo.xml` |
 | cargo-about | `cargo install cargo-about --locked --features cli` | `packaging/licenses/generate.sh` writes `THIRD-PARTY-LICENSES.txt` |
 | `nasm`, a C compiler, `make`, `curl` | `sudo apt install nasm build-essential curl` | `packaging/ffmpeg/build.sh` builds the LGPL FFmpeg that packages ship (into `target/ffmpeg`, ~10 s) |
+| `dpkg-dev` | `sudo apt install dpkg-dev` (usually installed) | `packaging/deb/build.sh` builds the .deb (`dpkg-shlibdeps`, `dpkg-deb`) |
 
 Packages don't use the distro's FFmpeg: they carry FFmpeg 8.1.3 built by `packaging/ffmpeg/build.sh` (LGPL only, about 3 MB, just NVENC, AAC, MPEG-TS and MP4). To build and test against it, see [AGENTS.md](AGENTS.md#commands).
 

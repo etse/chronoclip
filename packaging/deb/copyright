@@ -1,0 +1,42 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Chronoclip
+Source: https://github.com/etse/chronoclip
+
+Files: *
+Copyright: Chronoclip contributors
+License: MIT
+
+Files: usr/lib/chronoclip/libav*
+Copyright: the FFmpeg developers
+License: LGPL-2.1+
+Comment: FFmpeg, built without GPL or nonfree parts. Source, version and build options:
+ /usr/share/doc/chronoclip/FFMPEG-LICENSE.txt
+ On Debian systems, the LGPL 2.1 is in /usr/share/common-licenses/LGPL-2.1;
+ a copy is in /usr/share/doc/chronoclip/COPYING.LGPLv2.1.
+
+Files: usr/bin/chronoclip
+Copyright: Chronoclip contributors, and the authors of the Rust crates it includes
+License: MIT and others
+Comment: The binary includes Rust crates under MIT, Apache-2.0, BSD, ISC, Zlib, Unicode-3.0,
+ MPL-2.0 and other permissive licenses, and Slint under the Slint Royalty-free Desktop,
+ Mobile, and Web Applications License 2.0. All texts:
+ /usr/share/doc/chronoclip/THIRD-PARTY-LICENSES.txt.gz
+
+License: MIT
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
