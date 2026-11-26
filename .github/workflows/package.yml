@@ -43,12 +43,12 @@ jobs:
           apt-get install -y --no-install-recommends build-essential nasm curl ca-certificates git \
             xz-utils pkg-config clang libclang-dev libfontconfig1-dev libxkbcommon-dev python3 \
             dpkg-dev file
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -66,7 +66,7 @@ jobs:
         run: |
           dpkg-deb -I dist/*.deb
           dpkg-deb -c dist/*.deb
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: deb
           path: dist/*.deb
@@ -85,7 +85,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: deb
       - name: Install
@@ -94,10 +94,12 @@ jobs:
           apt-get install -y ./chronoclip_*.deb
       - name: Check
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           chronoclip --version
+          ldd /usr/bin/chronoclip
           if ldd /usr/bin/chronoclip | grep "not found"; then exit 1; fi
-          ldd /usr/bin/chronoclip | grep -q "=> /usr/lib/chronoclip/libavcodec.so"
+          # The runpath makes ldd print /usr/bin/../lib/chronoclip/…
+          ldd /usr/bin/chronoclip | grep -q "/lib/chronoclip/libavcodec.so"
           # Libraries the app loads at runtime must come with the package's dependencies.
           for lib in libX11.so.6 libX11-xcb.so.1 libxcb.so.1 libXcursor.so.1 libXi.so.6 \
                      libxkbcommon.so.0 libxkbcommon-x11.so.0 libXcomposite.so.1 libGL.so.1 \
