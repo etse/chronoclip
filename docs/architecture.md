@@ -196,6 +196,10 @@ Clips decode without errors in FFmpeg and play in mpv; `moov` is first. Not chec
 - **The AAC decoder is needed** although nothing is decoded: opening an MPEG-TS segment (saving a clip) only learns the audio's sample rate and channels from it.
 - **Runpaths instead of wrapper scripts:** the binary has `$ORIGIN/../lib/chronoclip` (same layout in the .deb and the AppImage), each FFmpeg library has `$ORIGIN`. Set in FFmpeg's generated `config.mak`, because configure loses the `$` of `--extra-ldsoflags`; the script checks the result with `readelf`.
 - **Verified** (RTX 4080): all 84 tests including the GPU, audio and hotkey tests pass against the bundled FFmpeg; an installed-layout binary loads only the bundled libraries and saves clips with H.264 + AAC.
+- **.deb with plain `dpkg-deb`** (`packaging/deb/build.sh`), no cargo-deb: dependencies are what `dpkg-shlibdeps` finds in the binary (glibc, libgcc, fontconfig) plus the libraries the app *loads at runtime*, listed by hand from what a recording session actually maps (X11/xcb/xkbcommon for Slint/winit, Xcomposite + GL for capture, PulseAudio, xdg-utils). The NVIDIA driver can't be a dependency (its package name changes per version); the description names it.
+- **AppImage without linuxdeploy** (`packaging/appimage/build.sh`): the only non-system library is our FFmpeg, so the AppDir is the staged layout plus desktop files; appimagetool 1.9.1 with the static type2 runtime (needs `fusermount3`, not `libfuse2`). Inside an AppImage the binary runs from a temporary mount, so autostart uses `$APPIMAGE`.
+- **Built in Ubuntu 22.04** (CI container) for the glibc 2.35 baseline: one .deb for Ubuntu 22.04–26.04 / Mint 21–23, one AppImage for current distros. CI installs or runs both on 8 systems for every packaging change and every release.
+- **Releases from tags** (`.github/workflows/release.yml`): `packaging/check-release.sh` makes the tag, `Cargo.toml`, the metainfo `<release>` and `CHANGELOG.md` agree; the FFmpeg source tarball is attached because the LGPL notice in both packages promises it. v0.1.0 published 2026-11-26.
 
 ## Open questions
 

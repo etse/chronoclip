@@ -113,7 +113,12 @@ Chronoclip is developed and tested first on the maintainer's machine. Other setu
 
 ## Installation
 
-**See [INSTALL.md](INSTALL.md)** for what to install, both to run Chronoclip (users) and to build it (developers).
+Download the latest release from **[GitHub Releases](https://github.com/etse/chronoclip/releases/latest)**:
+
+- **Ubuntu 22.04+ / Linux Mint 21+:** `chronoclip_<version>_amd64.deb`, then double-click it or `sudo apt install ./chronoclip_*_amd64.deb`.
+- **Other distros** (glibc 2.35+): `Chronoclip-<version>-x86_64.AppImage`, then `chmod +x` and run it.
+
+You need an X11 session and an NVIDIA GPU with the proprietary driver (530+). **[INSTALL.md](INSTALL.md)** has the details, and what developers need to build it.
 
 ## Getting started (development)
 
