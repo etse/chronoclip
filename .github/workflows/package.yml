@@ -110,7 +110,12 @@ jobs:
           test -f /usr/share/applications/io.github.etse.chronoclip.desktop
           test -f /usr/share/icons/hicolor/256x256/apps/io.github.etse.chronoclip.png
           test -f /usr/share/metainfo/io.github.etse.chronoclip.metainfo.xml
-          test -f /usr/share/doc/chronoclip/FFMPEG-LICENSE.txt
+          # Ubuntu's container images are minimized: dpkg skips /usr/share/doc except copyright
+          # files. So check the license files in the package itself.
+          test -f /usr/share/doc/chronoclip/copyright
+          for doc in FFMPEG-LICENSE.txt COPYING.LGPLv2.1 THIRD-PARTY-LICENSES.txt.gz; do
+            dpkg-deb -c ./chronoclip_*.deb | grep "/usr/share/doc/chronoclip/$doc" > /dev/null
+          done
       - name: Remove
         run: |
           apt-get remove -y chronoclip
