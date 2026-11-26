@@ -194,4 +194,3 @@ Clips decode without errors in FFmpeg and play in mpv; `moov` is first. Not chec
 
 - Cinnamon "unredirects" fullscreen windows for performance. WoW's borderless "Windowed (Fullscreen)" mode may still be flagged `_NET_WM_STATE_FULLSCREEN` and get unredirected. Our own `XCompositeRedirectWindow` should keep an off-screen pixmap regardless; verify this in M2. Exclusive fullscreen is lower priority.
 - Wayland zero-copy: PipeWire DMA-BUF → VAAPI surface import; NVIDIA (DMA-BUF → CUDA → NVENC).
-- Packaging: Flatpak (natural fit for portals, but GPU encoder access needs care) vs AppImage vs AUR.

@@ -10,10 +10,28 @@ Status: ✅ done · 🚧 in progress · ⬜ not started
 | M3 | Save replay: global hotkey, lossless remux to MP4 | ✅ |
 | M4 | Audio: game audio via PipeWire, optional mic track | ✅ |
 | M5 | Polish: save notification and chime, tray state, start with desktop | ✅ |
-| M6 | Packaging: .deb, AppImage, Flatpak, AUR | ⬜ |
+| M6 | Packaging: .deb (Ubuntu/Mint) and AppImage on GitHub Releases | 🚧 |
 | M7 | Better-looking UI (nice to have): visual redesign, theming, icons | ⬜ |
 | M8 | Other games (long term): record any game, not just WoW: window picker, game detection, per-game clips | ⬜ |
 | M9 | Wayland + AMD/Intel: portal/PipeWire capture, GlobalShortcuts portal, VAAPI | ⬜ |
+
+## M6: Packaging
+
+Goal: Ubuntu and Linux Mint users install Chronoclip from a **.deb**, everyone else runs the **AppImage**; both are downloaded from GitHub Releases and need no FFmpeg or build tools. First release: **v0.1.0**.
+
+Both packages carry the same **LGPL FFmpeg** (built by us, shared libraries): the distros' FFmpeg differs in version between releases (Ubuntu 24.04 has 6.1, 26.04 newer), and Ubuntu's is a GPL build (`--enable-gpl --enable-libx264`) that we may not ship (AGENTS rule 7). With our own FFmpeg in `/usr/lib/chronoclip/`, **one .deb works on Ubuntu 22.04 / 24.04 / 26.04 and Mint 21 / 22 / 23**. X11, OpenGL, CUDA/NVENC (NVIDIA driver) and PulseAudio still come from the host.
+
+- [ ] Groundwork: app-menu entry (`chronoclip.desktop`), hicolor icons (16–512 px), AppStream metainfo, `chronoclip --version`; notifications and autostart use the installed icon
+- [ ] License files for binaries: third-party Rust licenses (`cargo-about`), FFmpeg's LGPL text, its exact source and build configuration, Slint attribution (already in About)
+- [ ] LGPL FFmpeg build script (`packaging/ffmpeg/`): a fixed FFmpeg release, shared libs, no GPL/nonfree parts, only what Chronoclip uses (`h264_nvenc` + CUDA via `nv-codec-headers`, `aac`, mpegts/mp4 muxing and demuxing); the app is compiled against it
+- [ ] Build environment: everything built in an Ubuntu 22.04 container (oldest glibc we support), in CI; locally only with the maintainer's OK (Docker needs sudo)
+- [ ] .deb: `cargo-deb`, binary in `/usr/bin`, FFmpeg in `/usr/lib/chronoclip/` (rpath), desktop entry, icons, metainfo, licenses; depends on the X11/GL/PulseAudio/fontconfig/xkbcommon runtime packages, recommends the NVIDIA driver; installs and removes cleanly with apt
+- [ ] AppImage: same binary and FFmpeg plus the other non-system libraries, static AppImage runtime (no `libfuse2` needed on Ubuntu 24.04+); autostart points at the `.AppImage` file (`$APPIMAGE`), not the temporary mount
+- [ ] GitHub Releases: pushing a tag `v*` builds the .deb and the AppImage in CI and attaches them with SHA-256 checksums and release notes
+- [ ] Docs: INSTALL.md user section (.deb and AppImage, NVIDIA requirement), README install section, architecture.md (packaging decisions), AGENTS.md (how to cut a release)
+- [ ] Verified: the .deb installs, records and saves on the maintainer's Mint machine (in-game) and removes cleanly; the AppImage records and saves on Mint; both start in Ubuntu 22.04 and 26.04 containers and the AppImage in a Fedora container in CI
+
+Out of scope: Flatpak and AUR (dropped: the sandbox fights window capture, process detection and the global hotkey; Flathub would be the reason to revisit), AMD/Intel and Wayland (M9).
 
 ## M5: Polish
 
