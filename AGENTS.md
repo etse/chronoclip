@@ -52,6 +52,7 @@ Read before making non-trivial changes:
 │   ├── stage.sh               # binary + bundled FFmpeg → STAGE/usr/{bin,lib/chronoclip} (runpath $ORIGIN/../lib/chronoclip)
 │   ├── deb/                   # build.sh → target/deb/chronoclip_<version>_amd64.deb (dpkg-deb), copyright
 │   ├── appimage/              # build.sh → target/appimage/Chronoclip-<version>-x86_64.AppImage (appimagetool, static runtime)
+│   ├── check-release.sh       # version/date/CHANGELOG agree? → release notes
 │   ├── ffmpeg/                # build.sh: the LGPL FFmpeg (8.1.3, NVENC/AAC/MPEG-TS/MP4 only) shipped in packages
 │   ├── icons/                 # make-icons.py (Pillow) → hicolor PNGs + app/ui/icons; regenerate, don't edit PNGs
 │   ├── linux/                 # io.github.etse.chronoclip.desktop + .metainfo.xml (validate with desktop-file-validate / appstreamcli)
@@ -100,8 +101,18 @@ of improvising:
 | `av-sync-test` | Measure A/V sync of clips (flash + beep every second) |
 | `milestone` | Plan, tick, verify and close milestones in `docs/roadmap.md` |
 | `readme-screenshot` | Retake the README window screenshot |
+| `release` | Cut a release (or rehearse one with a dry run) |
 
 New skills go in `.agents/skills/` too (one folder with `SKILL.md` and optional `scripts/`).
+
+## Releases
+
+A pushed tag `vX.Y.Z` publishes a GitHub release with the .deb, the AppImage, the FFmpeg source
+and checksums (`.github/workflows/release.yml`); notes come from `CHANGELOG.md`. Before tagging,
+`Cargo.toml`, the metainfo `<release>` entry and `CHANGELOG.md` must agree
+(`packaging/check-release.sh X.Y.Z`). Follow the `release` skill, and **never push a tag
+without the maintainer's go**: it publishes to everyone. Add user-facing changes to
+`CHANGELOG.md` under `## [Unreleased]` as you make them.
 
 ## Hard rules
 

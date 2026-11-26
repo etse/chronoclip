@@ -1,0 +1,87 @@
+name: Release
+
+# Pushing a tag vX.Y.Z publishes a GitHub release with the .deb, the AppImage, the FFmpeg source
+# tarball (LGPL: the packages contain FFmpeg) and SHA256SUMS. The notes come from CHANGELOG.md.
+# Started by hand ("Run workflow"), it is a dry run: everything is built, tested and collected,
+# and uploaded as the artifact "release-dry-run" instead of being published.
+# How to cut a release: AGENTS.md, "Releases".
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to rehearse (e.g. 0.1.0). Dry run: nothing is published."
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    name: Check version and notes
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - id: version
+        name: Version
+        run: |
+          if [[ $GITHUB_REF_TYPE == tag ]]; then v=${GITHUB_REF_NAME#v}; else v=${{ inputs.version }}; v=${v#v}; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - name: Tag, Cargo.toml, metainfo and CHANGELOG.md agree
+        run: packaging/check-release.sh "${{ steps.version.outputs.version }}" release-notes.md
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: release-notes.md
+
+  package:
+    name: Build and test packages
+    needs: check
+    uses: ./.github/workflows/package.yml
+
+  publish:
+    name: ${{ github.ref_type == 'tag' && 'Publish release' || 'Collect release (dry run)' }}
+    needs: [check, package]
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Add the FFmpeg source code
+        run: |
+          eval "$(grep -E '^FFMPEG_(VERSION|SHA256|URL)=' packaging/ffmpeg/build.sh)"
+          curl -sSfL -o "dist/ffmpeg-$FFMPEG_VERSION.tar.xz" "$FFMPEG_URL"
+          echo "$FFMPEG_SHA256  dist/ffmpeg-$FFMPEG_VERSION.tar.xz" | sha256sum -c -
+      - name: Check files and write checksums
+        run: |
+          cd dist
+          test -f "chronoclip_${VERSION}_amd64.deb"
+          test -f "Chronoclip-${VERSION}-x86_64.AppImage"
+          mv release-notes.md ../release-notes.md
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+          ls -la
+          { echo "## Chronoclip $VERSION"; echo; echo '```'; cat SHA256SUMS; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish
+        if: github.ref_type == 'tag'
+        run: |
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "Chronoclip $VERSION" \
+            --notes-file release-notes.md dist/*
+      - name: Upload dry run
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-dry-run
+          path: |
+            dist/*
+            release-notes.md
