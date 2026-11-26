@@ -102,5 +102,8 @@ Only needed to change icons, check the app metadata or build the license file th
 | Pillow | `sudo apt install python3-pil` | `python3 packaging/icons/make-icons.py` renders all icon sizes |
 | `desktop-file-validate`, `appstreamcli` | `sudo apt install desktop-file-utils appstream` | Checking `packaging/linux/*.desktop` and `*.metainfo.xml` |
 | cargo-about | `cargo install cargo-about --locked --features cli` | `packaging/licenses/generate.sh` writes `THIRD-PARTY-LICENSES.txt` |
+| `nasm`, a C compiler, `make`, `curl` | `sudo apt install nasm build-essential curl` | `packaging/ffmpeg/build.sh` builds the LGPL FFmpeg that packages ship (into `target/ffmpeg`, ~10 s) |
+
+Packages don't use the distro's FFmpeg: they carry FFmpeg 8.1.3 built by `packaging/ffmpeg/build.sh` (LGPL only, about 3 MB, just NVENC, AAC, MPEG-TS and MP4). To build and test against it, see [AGENTS.md](AGENTS.md#commands).
 
 See [AGENTS.md](AGENTS.md#commands) for test, lint and other commands.

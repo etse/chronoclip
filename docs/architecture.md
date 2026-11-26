@@ -190,6 +190,13 @@ Clips decode without errors in FFmpeg and play in mpv; `moov` is first. Not chec
 - **Tray state from the recorder status**: three pre-rendered icons (red, grey, amber dot), switched in `tray.slint`.
 - **No clip library**: dropped from M5; the output folder and the notification's **Show in folder** cover it for now.
 
+## Packaging (M6)
+
+- **Own LGPL FFmpeg in every package** (`packaging/ffmpeg/build.sh`): FFmpeg 8.1.3, shared libraries, `--disable-everything` plus only `h264_nvenc` (CUDA through nv-codec-headers n12.1.14.1 → NVIDIA driver 530+), the AAC encoder and decoder, MPEG-TS and MP4 muxers, MPEG-TS and MOV demuxers, the h264/aac parsers and three bitstream filters. 3.1 MB, depends only on glibc. The script fails if `CONFIG_GPL` or `CONFIG_NONFREE` is set. Why not the distro's: different versions per Ubuntu release (one .deb for all), and Ubuntu's build is GPL (`--enable-libx264`).
+- **The AAC decoder is needed** although nothing is decoded: opening an MPEG-TS segment (saving a clip) only learns the audio's sample rate and channels from it.
+- **Runpaths instead of wrapper scripts:** the binary has `$ORIGIN/../lib/chronoclip` (same layout in the .deb and the AppImage), each FFmpeg library has `$ORIGIN`. Set in FFmpeg's generated `config.mak`, because configure loses the `$` of `--extra-ldsoflags`; the script checks the result with `readelf`.
+- **Verified** (RTX 4080): all 84 tests including the GPU, audio and hotkey tests pass against the bundled FFmpeg; an installed-layout binary loads only the bundled libraries and saves clips with H.264 + AAC.
+
 ## Open questions
 
 - Cinnamon "unredirects" fullscreen windows for performance. WoW's borderless "Windowed (Fullscreen)" mode may still be flagged `_NET_WM_STATE_FULLSCREEN` and get unredirected. Our own `XCompositeRedirectWindow` should keep an off-screen pixmap regardless; verify this in M2. Exclusive fullscreen is lower priority.

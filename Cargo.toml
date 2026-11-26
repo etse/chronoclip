@@ -16,7 +16,7 @@ anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 clap = { version = "4", features = ["derive"] }
 directories = "6"
-ffmpeg-next = { version = "8", default-features = false, features = ["codec", "format", "software-scaling"] }
+ffmpeg-next = { version = "8", default-features = false, features = ["codec", "format"] }
 gl = "0.14"
 libc = "0.2"
 libloading = "0.8"

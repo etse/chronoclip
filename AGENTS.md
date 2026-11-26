@@ -49,6 +49,7 @@ Read before making non-trivial changes:
 │   ├── chronoclip-capture/    # X11: window finding, capture (XComposite → GLX → CUDA), hotkey grab; audio (libpulse); Wayland later
 │   └── chronoclip-encode/     # FFmpeg: NVENC encoder (CUDA frames), AAC encoder, MPEG-TS segment writer, MP4 remux
 ├── packaging/
+│   ├── ffmpeg/                # build.sh: the LGPL FFmpeg (8.1.3, NVENC/AAC/MPEG-TS/MP4 only) shipped in packages
 │   ├── icons/                 # make-icons.py (Pillow) → hicolor PNGs + app/ui/icons; regenerate, don't edit PNGs
 │   ├── linux/                 # io.github.etse.chronoclip.desktop + .metainfo.xml (validate with desktop-file-validate / appstreamcli)
 │   └── licenses/              # cargo-about config; generate.sh writes THIRD-PARTY-LICENSES.txt at package time
@@ -72,6 +73,10 @@ CHRONOCLIP_WINDOW=glxgears cargo run -p chronoclip   # record any window by titl
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+# Against the bundled LGPL FFmpeg (what the packages ship); needs nasm:
+packaging/ffmpeg/build.sh             # → target/ffmpeg
+PKG_CONFIG_PATH=$PWD/target/ffmpeg/lib/pkgconfig CARGO_TARGET_DIR=target/bundled LD_LIBRARY_PATH=$PWD/target/ffmpeg/lib \
+  cargo test --release --workspace
 cargo test --workspace -- --ignored   # GPU/X11/audio tests: need X11, NVIDIA, glxgears, a sound server and paplay; the hotkey test presses keys via XTest
 ```
 
