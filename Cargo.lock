@@ -766,7 +766,7 @@ dependencies = [
 
 [[package]]
 name = "chronoclip"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -787,7 +787,7 @@ dependencies = [
 
 [[package]]
 name = "chronoclip-capture"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chronoclip-core",
  "chronoclip-encode",
@@ -803,7 +803,7 @@ dependencies = [
 
 [[package]]
 name = "chronoclip-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "directories",
@@ -816,7 +816,7 @@ dependencies = [
 
 [[package]]
 name = "chronoclip-encode"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chronoclip-core",
  "ffmpeg-next",

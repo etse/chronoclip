@@ -6,6 +6,32 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-27
+
+A new, modern dark look, in the style of the Battle.net launcher and Discord.
+
+### Added
+
+- **Home page:** what Chronoclip is doing at a glance (recording, waiting or a problem), the game,
+  resolution and sound, the replay buffer filling up, a big **Save replay** button that shows your
+  hotkey, and your last clip with **Play** and **Show in folder**. The record dot pulses while
+  recording.
+- **Settings** in cards (Recording, Sound, Saving, Folders, Window & startup) with switches,
+  sliders and buttons instead of plain form fields. Still saved right away.
+- **Hotkey recorder:** click the hotkey and press the new combination (Esc cancels), instead of
+  typing it.
+- **About page** with links to the project, releases and issue tracker, why Chronoclip is safe for
+  your account, and credits.
+- **Own title bar** with the Home · Settings · About tabs; drag it to move the window, double-click
+  to maximize, drag the edges to resize. Prefer your desktop's title bar? Switch off
+  *Chronoclip title bar* in Settings.
+- Everything can be used with the keyboard (Tab, Enter, Space, arrow keys).
+
+### Changed
+
+- The window is larger (920×640, at least 720×540) and uses the Inter typeface and Lucide icons,
+  bundled with Chronoclip so it looks the same on every distro.
+
 ## [0.1.0] - 2026-11-26
 
 First release: a replay buffer for World of Warcraft on Linux (X11 + NVIDIA).

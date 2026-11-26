@@ -62,6 +62,11 @@
   </keywords>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.2.0" date="2026-11-27">
+      <description>
+        <p>A new, modern dark look: a Home page with the recording status, the replay buffer, a big Save replay button and your last clip; settings in cards; a hotkey recorder; an About page; and an own title bar with tabs.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-11-26">
       <description>
         <p>First release: replay buffer, hotkey saves, game and microphone audio, notifications.</p>
