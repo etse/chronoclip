@@ -33,3 +33,6 @@ desktop.ini
 .claude/settings.local.json
 CLAUDE.local.md
 .opencode/node_modules/
+
+# --- Python (skill scripts) ---
+__pycache__/

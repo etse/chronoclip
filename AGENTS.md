@@ -82,6 +82,22 @@ cargo test --workspace -- --ignored   # GPU/X11/audio tests: need X11, NVIDIA, g
 
 Before declaring a task done, run format, clippy, and tests, and report the actual results. Capture, hotkey, audio, and encoder code usually needs a real desktop session to verify. Say clearly what was tested automatically and what still needs a manual in-game check.
 
+## Skills
+
+Step-by-step guides with scripts for recurring jobs live in **`.agents/skills/<name>/SKILL.md`**
+(read natively by opencode; `.claude/skills` is a symlink to it for Claude Code). Use them instead
+of improvising:
+
+| Skill | Use it to |
+|---|---|
+| `test-instance` | Run the real app in a test, isolated from the maintainer's instance, settings, sound and mic |
+| `bundled-ffmpeg` | Build the packages' LGPL FFmpeg, test against it, lay out an installed copy |
+| `av-sync-test` | Measure A/V sync of clips (flash + beep every second) |
+| `milestone` | Plan, tick, verify and close milestones in `docs/roadmap.md` |
+| `readme-screenshot` | Retake the README window screenshot |
+
+New skills go in `.agents/skills/` too (one folder with `SKILL.md` and optional `scripts/`).
+
 ## Hard rules
 
 1. **Never touch the game process.** No DLL injection, no D3D/Vulkan/OpenGL hooking (including Vulkan layers or `LD_PRELOAD` tricks), no memory reading, no input automation. Capture only through X11 (XComposite) or the portal/PipeWire APIs. This protects users' Battle.net accounts and is non-negotiable.
