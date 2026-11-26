@@ -129,7 +129,7 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
     });
 
     // "Start with the desktop" is the autostart file itself, not a setting.
-    let exe = std::env::current_exe().ok();
+    let exe = autostart::program_path(std::env::current_exe().ok(), std::env::var_os("APPIMAGE"));
     if let Some(exe) = &exe {
         match autostart::refresh(&paths.autostart_file, exe) {
             Ok(true) => tracing::info!("autostart entry now starts {}", exe.display()),

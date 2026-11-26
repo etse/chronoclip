@@ -63,4 +63,9 @@ with `CHRONOCLIP_BIN=target/stage/usr/bin/chronoclip $T start …` (see the bund
 - Notifications from the test instance appear on the maintainer's screen; that's fine, but
   expect it. Capture them with `dbus-monitor --session "interface='org.freedesktop.Notifications',member='Notify'"`.
 - Always `$T stop` at the end, also after failures, so no null sink or process is left behind.
+- **Testing the AppImage** (`CHRONOCLIP_BIN=target/appimage/Chronoclip-…AppImage`): export
+  `APPIMAGELAUNCHER_DISABLE=1` first. The maintainer has AppImageLauncher, which otherwise
+  intercepts the launch, *moves* the file to `~/Applications` and adds a menu entry (undo with
+  `ail-cli unintegrate FILE` and deleting the file). An AppImage instance shows up as `AppRun`,
+  not `chronoclip`, in `pgrep`.
 - Never run Docker yourself; it needs sudo. Ask the maintainer.

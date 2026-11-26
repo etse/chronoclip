@@ -37,6 +37,19 @@ To remove it: `sudo apt remove chronoclip`. Your settings (`~/.config/chronoclip
 
 What the .deb installs: `/usr/bin/chronoclip`, FFmpeg in `/usr/lib/chronoclip/`, the menu entry, icons and license files (`/usr/share/doc/chronoclip/`).
 
+### Install on other distros (AppImage)
+
+One file that runs on distros with glibc 2.35 or newer: Debian 12+, Fedora 36+, Arch, openSUSE Tumbleweed, Ubuntu 22.04+ and their relatives.
+
+1. **NVIDIA driver** from your distro (see the table below).
+2. Download `Chronoclip-<version>-x86_64.AppImage` from [GitHub Releases](https://github.com/etse/chronoclip/releases), then:
+   ```sh
+   chmod +x Chronoclip-*-x86_64.AppImage
+   ./Chronoclip-*-x86_64.AppImage
+   ```
+
+It needs FUSE 3 (`fusermount3`, package `fuse3`), installed by default on current desktops; without it, start it with `--appimage-extract-and-run`. Keep the file where it is if you turn on *Start in the tray when you log in*: the autostart entry points at the `.AppImage` file (it follows if the file is moved and started from the new place). AppImageLauncher, if installed, may offer to move it to `~/Applications` and add it to the menu.
+
 ### Runtime libraries
 
 Everything Chronoclip loads from the system is part of every Linux X11 desktop (the .deb depends on these packages):

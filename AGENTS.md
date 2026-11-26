@@ -51,6 +51,7 @@ Read before making non-trivial changes:
 ├── packaging/
 │   ├── stage.sh               # binary + bundled FFmpeg → STAGE/usr/{bin,lib/chronoclip} (runpath $ORIGIN/../lib/chronoclip)
 │   ├── deb/                   # build.sh → target/deb/chronoclip_<version>_amd64.deb (dpkg-deb), copyright
+│   ├── appimage/              # build.sh → target/appimage/Chronoclip-<version>-x86_64.AppImage (appimagetool, static runtime)
 │   ├── ffmpeg/                # build.sh: the LGPL FFmpeg (8.1.3, NVENC/AAC/MPEG-TS/MP4 only) shipped in packages
 │   ├── icons/                 # make-icons.py (Pillow) → hicolor PNGs + app/ui/icons; regenerate, don't edit PNGs
 │   ├── linux/                 # io.github.etse.chronoclip.desktop + .metainfo.xml (validate with desktop-file-validate / appstreamcli)
@@ -80,6 +81,7 @@ packaging/ffmpeg/build.sh             # → target/ffmpeg
 PKG_CONFIG_PATH=$PWD/target/ffmpeg/lib/pkgconfig CARGO_TARGET_DIR=target/bundled LD_LIBRARY_PATH=$PWD/target/ffmpeg/lib \
   cargo test --release --workspace
 packaging/deb/build.sh                # → target/deb/chronoclip_<version>_amd64.deb (CI: .github/workflows/package.yml)
+packaging/appimage/build.sh           # → target/appimage/Chronoclip-<version>-x86_64.AppImage
 cargo test --workspace -- --ignored   # GPU/X11/audio tests: need X11, NVIDIA, glxgears, a sound server and paplay; the hotkey test presses keys via XTest
 ```
 

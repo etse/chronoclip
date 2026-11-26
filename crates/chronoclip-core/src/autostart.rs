@@ -2,7 +2,7 @@
 //! that starts Chronoclip in the tray when the user logs in.
 
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::APP_ID;
 
@@ -38,6 +38,19 @@ fn exec_argument(arg: &str) -> String {
     }
     quoted.push('"');
     quoted.replace('\\', "\\\\").replace('%', "%%")
+}
+
+/// The program the autostart entry should start. Inside an AppImage the running binary lives
+/// in a temporary mount (`/tmp/.mount_…`) that is gone after a reboot, so use the `.AppImage`
+/// file itself, which the AppImage runtime passes in `$APPIMAGE`.
+pub fn program_path(
+    current_exe: Option<PathBuf>,
+    appimage: Option<std::ffi::OsString>,
+) -> Option<PathBuf> {
+    appimage
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or(current_exe)
 }
 
 /// True while the autostart entry exists.
@@ -124,6 +137,24 @@ mod tests {
         disable(&file)?;
         assert!(!is_enabled(&file));
         Ok(())
+    }
+
+    #[test]
+    fn appimage_starts_the_appimage_file() {
+        let exe = Some(PathBuf::from("/tmp/.mount_ChronoXYZ/usr/bin/chronoclip"));
+        assert_eq!(
+            program_path(
+                exe.clone(),
+                Some("/home/me/Apps/Chronoclip-x86_64.AppImage".into())
+            ),
+            Some(PathBuf::from("/home/me/Apps/Chronoclip-x86_64.AppImage"))
+        );
+        assert_eq!(program_path(exe.clone(), None), exe);
+        assert_eq!(
+            program_path(exe.clone(), Some("relative.AppImage".into())),
+            exe
+        );
+        assert_eq!(program_path(None, None), None);
     }
 
     #[test]

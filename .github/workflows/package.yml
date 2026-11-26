@@ -1,7 +1,9 @@
 name: Package
 
-# Builds the .deb in an Ubuntu 22.04 container (oldest supported base, so its minimum library
-# versions fit every newer system), then installs, runs and removes it on 22.04, 24.04 and 26.04.
+# Builds the .deb and the AppImage in an Ubuntu 22.04 container (oldest supported base, so the
+# minimum library versions fit every newer system). Then installs, runs and removes the .deb on
+# Ubuntu 22.04, 24.04 and 26.04, and runs the AppImage on Ubuntu 22.04, Debian, Fedora, Arch and
+# openSUSE.
 # The release workflow will call this one (workflow_call) to attach the result to a release.
 
 on:
@@ -33,7 +35,7 @@ env:
 
 jobs:
   deb:
-    name: Build .deb (Ubuntu 22.04)
+    name: Build .deb and AppImage (Ubuntu 22.04)
     runs-on: ubuntu-24.04
     container: ubuntu:22.04
     steps:
@@ -56,20 +58,29 @@ jobs:
             ~/.cargo/bin/cargo-about
             target/bundled
             target/ffmpeg-src
+            target/appimage-tools
           key: deb-ubuntu2204-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'packaging/ffmpeg/build.sh') }}
           restore-keys: deb-ubuntu2204-
       - name: Install cargo-about
         run: command -v cargo-about || cargo install cargo-about --locked --features cli
       - name: Build .deb
         run: packaging/deb/build.sh dist
-      - name: Show package
+      - name: Build AppImage
+        run: packaging/appimage/build.sh dist
+      - name: Show packages
         run: |
           dpkg-deb -I dist/*.deb
           dpkg-deb -c dist/*.deb
+          ls -la dist
       - uses: actions/upload-artifact@v7
         with:
           name: deb
           path: dist/*.deb
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: appimage
+          path: dist/*.AppImage
           if-no-files-found: error
 
   install:
@@ -121,3 +132,46 @@ jobs:
           apt-get remove -y chronoclip
           test ! -e /usr/bin/chronoclip
           test ! -e /usr/lib/chronoclip
+
+  appimage:
+    name: Run AppImage on ${{ matrix.image }}
+    needs: deb
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: "ubuntu:22.04"
+            setup: apt-get update && apt-get install -y libfontconfig1
+          - image: "debian:12"
+            setup: apt-get update && apt-get install -y libfontconfig1
+          - image: "fedora:latest"
+            setup: dnf install -y fontconfig
+          - image: "archlinux:latest"
+            setup: pacman -Sy --noconfirm fontconfig
+          - image: "opensuse/tumbleweed:latest"
+            setup: zypper --non-interactive install fontconfig
+    defaults:
+      run:
+        shell: sh
+    steps:
+      - name: Install fontconfig (part of every desktop, not of minimal containers)
+        run: ${{ matrix.setup }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: appimage
+      - name: Run
+        env:
+          # Containers have no FUSE: let the AppImage extract itself to a temporary directory.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          set -eux
+          chmod +x ./Chronoclip-*-x86_64.AppImage
+          ./Chronoclip-*-x86_64.AppImage --version
+          ./Chronoclip-*-x86_64.AppImage --appimage-extract > /dev/null
+          ldd squashfs-root/usr/bin/chronoclip
+          if ldd squashfs-root/usr/bin/chronoclip | grep "not found"; then exit 1; fi
+          ldd squashfs-root/usr/bin/chronoclip | grep "/lib/chronoclip/libavcodec.so" > /dev/null
+          test -f squashfs-root/usr/share/doc/chronoclip/FFMPEG-LICENSE.txt
+          test -f squashfs-root/usr/share/doc/chronoclip/THIRD-PARTY-LICENSES.txt
