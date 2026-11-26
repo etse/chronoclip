@@ -1,6 +1,6 @@
 import { AboutSlint, Button, ComboBox, GroupBox, LineEdit, Palette, Slider, Switch, TabWidget } from "std-widgets.slint";
 
-export { Tray } from "tray.slint";
+export { Tray, TrayState } from "tray.slint";
 
 component Hint inherits Text {
     font-size: 12px;
@@ -83,6 +83,8 @@ export component MainWindow inherits Window {
     in-out property <string> audio;
     in-out property <bool> microphone;
     in-out property <bool> save-sound: true;
+    // Not part of the settings file: mirrors whether the autostart entry exists.
+    in-out property <bool> autostart: false;
     in-out property <string> buffer-dir;
     in-out property <string> output-dir;
 
@@ -92,6 +94,7 @@ export component MainWindow inherits Window {
     callback reset-defaults();
     callback open-folder(string);
     callback save-replay();
+    callback autostart-toggled(bool);
 
     property <int> minutes: Math.round(root.buffer-minutes);
     property <string> dir-warning: root.buffer-dir-warning(root.buffer-dir);
@@ -316,6 +319,17 @@ export component MainWindow inherits Window {
                                 committed => {
                                     root.apply();
                                 }
+                            }
+                        }
+                    }
+
+                    GroupBox {
+                        title: "Startup";
+                        Switch {
+                            text: "Start Chronoclip in the tray when you log in";
+                            checked <=> root.autostart;
+                            toggled => {
+                                root.autostart-toggled(self.checked);
                             }
                         }
                     }

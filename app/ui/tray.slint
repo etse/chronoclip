@@ -1,5 +1,12 @@
+/// What the tray icon shows: red dot while recording, grey while waiting for the game,
+/// amber when recording failed.
+export enum TrayState { waiting, recording, error }
+
 export component Tray inherits SystemTrayIcon {
-    icon: @image-url("icons/chronoclip-64.png");
+    in property <TrayState> state: TrayState.waiting;
+    icon: root.state == TrayState.recording ? @image-url("icons/chronoclip-64.png")
+        : root.state == TrayState.error ? @image-url("icons/chronoclip-64-error.png")
+        : @image-url("icons/chronoclip-64-idle.png");
     in property <string> status: "Chronoclip";
     tooltip: root.status;
     title: "Chronoclip";

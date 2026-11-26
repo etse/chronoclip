@@ -28,6 +28,8 @@ pub struct Paths {
     pub runtime_dir: Option<PathBuf>,
     /// Unix socket used by `chronoclip save` and single-instance detection.
     pub socket: PathBuf,
+    /// `$XDG_CONFIG_HOME/autostart/chronoclip.desktop`, present while "Start with the desktop" is on.
+    pub autostart_file: PathBuf,
 }
 
 impl Paths {
@@ -50,6 +52,10 @@ impl Paths {
             default_output_dir: videos.join("Chronoclip"),
             runtime_dir,
             socket,
+            autostart_file: base
+                .config_dir()
+                .join("autostart")
+                .join("chronoclip.desktop"),
         })
     }
 
@@ -100,6 +106,7 @@ mod tests {
             default_output_dir: "/home/me/Videos/Chronoclip".into(),
             runtime_dir: Some("/run/user/1000".into()),
             socket: "/run/user/1000/chronoclip.sock".into(),
+            autostart_file: "/home/me/.config/autostart/chronoclip.desktop".into(),
         }
     }
 

@@ -57,7 +57,9 @@ Implementation order follows the reference setup (Linux Mint Cinnamon on X11, NV
 | Global hotkey | `XGrabKey` on the root window, once per Caps Lock / Num Lock combination; own code in `chronoclip-capture` (`X11Hotkey`) with its own thread and X connection. A key taken by another client (`BadAccess`) is reported in the UI | GlobalShortcuts portal (KDE Plasma 6, GNOME 48+, Hyprland). Fallback: user binds `chronoclip save` in their desktop settings |
 | Tray | Slint `SystemTrayIcon` (StatusNotifierItem); GNOME needs the AppIndicator extension | same |
 | IPC (`chronoclip save`) | Unix socket in `$XDG_RUNTIME_DIR/chronoclip.sock` | same |
-| Notifications | `org.freedesktop.Notifications` | same |
+| Notifications | `org.freedesktop.Notifications` via `notify-rust` (pure-Rust D-Bus, zbus); **Show in folder** via `org.freedesktop.FileManager1.ShowItems`, falling back to `xdg-open` on the folder | same |
+| Save chime | Generated in `chronoclip-core::chime` (two sine notes, 48 kHz mono), played with `libpulse-simple.so.0` (loaded at runtime) on its own thread | same |
+| Autostart | `$XDG_CONFIG_HOME/autostart/chronoclip.desktop` (`Exec="<binary>" --hidden`), written/removed by the settings switch; repointed at startup if the binary moved | same |
 
 Software encoding fallback must be LGPL/BSD-compatible (e.g. OpenH264), never `libx264`. The UI warns that software encoding costs FPS.
 
@@ -179,6 +181,14 @@ Clips decode without errors in FFmpeg and play in mpv; `moov` is first. Not chec
 - **AAC in the segments, not Opus:** MP4 + AAC plays everywhere (browsers, Discord, phones) without remuxing again.
 - **Arrival-time timestamps with drift correction** instead of resampling: simple and in sync within a frame; the cost is a short cut or silence every half minute or so on devices whose clock is far off. Resampling can replace it if that turns out audible.
 - **Microphone as a separate track**, not mixed into the game track: the clip keeps both editable. Discord and browsers only play track 1, so the mic isn't heard there (mixing is not planned for M4).
+
+## Decisions made in M5
+
+- **Chime as the in-game feedback**, notifications second: Cinnamon (and most desktops) hide notifications over fullscreen windows, and borderless WoW counts as fullscreen. The chime is synthesized, so there is no sound file to ship or license. It goes to the default output, so *All sound* records it.
+- **`notify-rust` pinned to 4.18**: 4.19 moved to zbus 6, while Slint (accesskit) uses zbus 5; staying on 4.18 keeps one zbus in the binary.
+- **Autostart is the file, not a setting**: the switch reads whether `~/.config/autostart/chronoclip.desktop` exists, so it can't disagree with what the desktop does. Entries without our `X-Chronoclip-Autostart` marker are never rewritten.
+- **Tray state from the recorder status**: three pre-rendered icons (red, grey, amber dot), switched in `tray.slint`.
+- **No clip library**: dropped from M5; the output folder and the notification's **Show in folder** cover it for now.
 
 ## Open questions
 

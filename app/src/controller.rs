@@ -16,7 +16,7 @@ use crate::hotkey::GlobalHotkey;
 use crate::notify::Alerts;
 use crate::recorder::{Recorder, RecorderConfig, RecorderStatus};
 use crate::save::{self, SavedClip};
-use crate::ui::{MainWindow, Tray};
+use crate::ui::{MainWindow, Tray, TrayState};
 
 /// Set to a window title (substring) to record that window instead of WoW. For testing.
 const WINDOW_ENV: &str = "CHRONOCLIP_WINDOW";
@@ -308,6 +308,11 @@ impl Controller {
         let last_save = Arc::clone(&self.last_save);
         slot.recorder = Some(Recorder::start(config.clone(), move |status| {
             let (text, recording) = status_text(&status, &matcher);
+            let state = match status {
+                RecorderStatus::Recording { .. } => TrayState::Recording,
+                RecorderStatus::Error(_) => TrayState::Error,
+                RecorderStatus::WaitingForWindow | RecorderStatus::Stopped => TrayState::Waiting,
+            };
             let mut tray_text = format!("Chronoclip: {text}");
             if let Some(line) = &*last_save.lock().unwrap_or_else(|e| e.into_inner()) {
                 tray_text.push('\n');
@@ -318,7 +323,10 @@ impl Controller {
                 w.set_recording(recording);
             });
             if let Some(tray) = &tray {
-                let _ = tray.upgrade_in_event_loop(move |t| t.set_status(tray_text.into()));
+                let _ = tray.upgrade_in_event_loop(move |t| {
+                    t.set_status(tray_text.into());
+                    t.set_state(state);
+                });
             }
         }));
         slot.config = Some(config);

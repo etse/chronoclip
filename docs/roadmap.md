@@ -21,10 +21,10 @@ Goal: you notice every save, even in-game; you can see at a glance whether Chron
 
 - [x] Save chime: a short chime generated in code (no sound file), played through the sound server (`libpulse`, already loaded) when a clip is saved; a different short tone on a failed save. Setting "Play a sound when saving", **on** by default
 - [x] Desktop notification (`org.freedesktop.Notifications` via `notify-rust`, no system dependency): "Clip saved · 10:00 · 1.4 GB" with **Play** and **Show in folder** actions; save errors notify too. Cinnamon hides notifications over fullscreen windows by default, so the chime is the in-game feedback
-- [ ] Tray icon shows state: red while recording, grey while waiting for WoW, warning icon on errors; tooltip unchanged
-- [ ] Start with desktop: settings switch that writes/removes `~/.config/autostart/chronoclip.desktop` (`Exec=<binary> --hidden`); default off; reflects the file's actual state
+- [x] Tray icon shows state: red while recording, grey while waiting for WoW, warning icon on errors; tooltip unchanged
+- [x] Start with desktop: settings switch that writes/removes `~/.config/autostart/chronoclip.desktop` (`Exec=<binary> --hidden`); default off; reflects the file's actual state
 - [ ] WoW detection: already in place since M2/M4 (waits for `Wow.exe`, starts and restarts by itself); check WoW Classic if available, then tick off
-- [ ] Docs: README (features, settings), architecture.md (notifications, chime), INSTALL.md only if dependencies change
+- [x ] Docs: README (features, settings), architecture.md (notifications, chime), INSTALL.md only if dependencies change
 - [ ] Verified in-game: chime audible in WoW (borderless) on save; notification after alt-tab; tray icon colors; autostart after a re-login
 
 Out of scope: clip library (dropped for now), trimming or editing clips, uploading or sharing, visual redesign (M7).

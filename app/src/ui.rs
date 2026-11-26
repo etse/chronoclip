@@ -6,13 +6,13 @@ use std::process::Command;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use chronoclip_core::Paths;
 use chronoclip_core::disk::{
     estimate_buffer_bytes, format_gb, nominal_bitrate_mbps, tmpfs_warning,
 };
 use chronoclip_core::settings::{
     AudioMode, DEFAULT_FPS, EncoderPreference, SUPPORTED_FPS, Settings,
 };
+use chronoclip_core::{Paths, autostart};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use crate::controller::Controller;
@@ -22,7 +22,7 @@ use crate::controller::Controller;
 mod generated {
     slint::include_modules!();
 }
-pub use generated::{MainWindow, Tray};
+pub use generated::{MainWindow, Tray, TrayState};
 
 fn encoder_label(encoder: EncoderPreference) -> &'static str {
     match encoder {
@@ -126,6 +126,46 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
     window.on_apply({
         let apply = Rc::clone(&apply);
         move || apply("Settings saved.")
+    });
+
+    // "Start with the desktop" is the autostart file itself, not a setting.
+    let exe = std::env::current_exe().ok();
+    if let Some(exe) = &exe {
+        match autostart::refresh(&paths.autostart_file, exe) {
+            Ok(true) => tracing::info!("autostart entry now starts {}", exe.display()),
+            Ok(false) => {}
+            Err(e) => tracing::warn!("could not update the autostart entry: {e}"),
+        }
+    }
+    window.set_autostart(autostart::is_enabled(&paths.autostart_file));
+    window.on_autostart_toggled({
+        let weak = window.as_weak();
+        let paths = Rc::clone(&paths);
+        move |on| {
+            let Some(window) = weak.upgrade() else { return };
+            let result = match (&exe, on) {
+                (Some(exe), true) => autostart::enable(&paths.autostart_file, exe),
+                (None, true) => Err(std::io::Error::other(
+                    "cannot find the Chronoclip program file",
+                )),
+                (_, false) => autostart::disable(&paths.autostart_file),
+            };
+            match result {
+                Ok(()) => {
+                    tracing::info!(on, file = %paths.autostart_file.display(), "autostart changed");
+                    let text = if on {
+                        "Chronoclip will start in the tray when you log in."
+                    } else {
+                        "Chronoclip will no longer start when you log in."
+                    };
+                    set_message(&window, text, false);
+                }
+                Err(e) => {
+                    set_message(&window, &format!("Could not change autostart: {e}"), true);
+                }
+            }
+            window.set_autostart(autostart::is_enabled(&paths.autostart_file));
+        }
     });
 
     window.on_reset_defaults({

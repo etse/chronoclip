@@ -7,7 +7,7 @@ Chronoclip continuously records your gameplay to a rolling buffer on disk. When 
 > **Status:** 🚧 Pre-alpha. Recording and saving replays with sound work on X11 with an NVIDIA GPU. See [Roadmap](#roadmap).
 
 <p align="center">
-  <img src="docs/images/chronoclip-window.png" alt="The Chronoclip window: recording status, a Save replay button, and settings for buffer length, frame rate, encoder, sound, microphone, hotkey and folders" width="560">
+  <img src="docs/images/chronoclip-window.png" alt="The Chronoclip window: recording status, a Save replay button, and settings for buffer length, frame rate, encoder, sound, microphone, hotkey, save sound, folders and starting at login" width="560">
 </p>
 
 ## What it is
@@ -55,11 +55,12 @@ Works today (X11 + NVIDIA):
 - **Hardware encoding** with NVENC, GPU-only capture path.
 - **Finds the WoW window by itself** (Wine / Proton `Wow.exe`).
 - **Fully native and lightweight**: Rust all the way down, native UI with [Slint](https://slint.dev). No Electron, no webview.
-- **Tray app** that keeps recording when the window is closed.
+- **Tray app** that keeps recording when the window is closed. The icon shows the state: red while recording, grey while waiting for WoW, amber on errors.
+- **You hear when a clip is saved**: a short chime (a different tone if saving failed), also while playing, plus a desktop notification with **Play** and **Show in folder**.
+- **Start with the desktop** (optional): starts in the tray when you log in.
 
 Planned (see [Roadmap](#roadmap)):
 
-- **Notifications** and a chime when a clip is saved, tray icon that shows the recording state, start with the desktop.
 - **Wayland** (screen capture and hotkey through portals) and **AMD / Intel** GPUs (VAAPI).
 - **Packages**: .deb, AppImage, Flatpak, AUR.
 - **Other games** besides WoW.
@@ -134,6 +135,8 @@ Any of these saves the last *N* minutes (your buffer length) while recording kee
 - click **Save replay** in the window, or **Save replay** in the tray menu,
 - run `chronoclip save`. It waits for the clip and prints its path, so you can also bind it to a key in your desktop's keyboard settings (the way to go on Wayland until the portal hotkey lands).
 
+A short rising chime tells you the clip was saved, and a lower falling tone that it wasn't (for example when nothing was recorded yet). A desktop notification shows the clip's length and size, with **Play** and **Show in folder** buttons. Cinnamon hides notifications over fullscreen windows by default (borderless WoW counts), so in-game the chime is what you notice; the notification is waiting when you alt-tab. With *All sound*, the chime is recorded at the start of the next clip.
+
 Clips go to `~/Videos/Chronoclip/Chronoclip_YYYY-MM-DD_HH-MM-SS.mp4` (H.264 + AAC in MP4, plays everywhere, starts instantly in browsers and Discord). The save waits up to two seconds for the moment you pressed the key to be written, then copies the video without re-encoding, so even long clips take seconds. If the WoW window changed size during the buffer, the clip starts at the resize. Each save starts where the previous clip ended, so two clips never contain the same footage.
 
 ## Configuration
@@ -151,6 +154,8 @@ Settings are changed in the window and saved automatically: lists and switches a
 | Quality | Auto | Constant quality or constant bitrate |
 | Sound | Game only | *Game only* (WoW's own audio; all sound until WoW's audio is found), *All sound* (everything you hear, incl. voice chat and music), *Off* |
 | Microphone | Off | Your default microphone as a second audio track (players and Discord play only the first track) |
+| Play a sound when a clip is saved | On | Chime on success, lower tone on failure |
+| Start in the tray when you log in | Off | Writes `~/.config/autostart/chronoclip.desktop` (not stored in `settings.toml`; the switch shows whether that file exists) |
 
 **Disk usage tip:** at 1080p60 and ~20 Mbit/s, a 10 minute buffer uses about 1.5 GB. A 45 minute buffer at the same bitrate uses about 6.8 GB.
 
