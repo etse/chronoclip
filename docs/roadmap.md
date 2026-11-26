@@ -25,12 +25,15 @@ Both packages carry the same **LGPL FFmpeg** (built by us, shared libraries): th
 - [x] License files for binaries: third-party Rust licenses (`cargo-about`), FFmpeg's LGPL text, its exact source and build configuration, Slint attribution (already in About)
   - Rust crates: `packaging/licenses/generate.sh` (incl. the Slint royalty-free text that cargo-about 0.9 can't include). FFmpeg: `build.sh` writes `FFMPEG-LICENSE.txt` (source URL, SHA-256, configure flags) and the LGPL text; the release workflow must also attach the FFmpeg source tarball, as that file promises
 - [x] LGPL FFmpeg build script (`packaging/ffmpeg/`): a fixed FFmpeg release, shared libs, no GPL/nonfree parts, only what Chronoclip uses (`h264_nvenc` + CUDA via `nv-codec-headers`, `aac`, mpegts/mp4 muxing and demuxing); the app is compiled against it
-- [ ] Build environment: everything built in an Ubuntu 22.04 container (oldest glibc we support), in CI; locally only with the maintainer's OK (Docker needs sudo)
-- [ ] .deb: `packaging/deb/build.sh` (plain `dpkg-deb`; cargo-deb not needed), binary in `/usr/bin`, FFmpeg in `/usr/lib/chronoclip/` (rpath), desktop entry, icons, metainfo, licenses; depends on the X11/GL/PulseAudio/fontconfig/xkbcommon runtime packages, recommends the NVIDIA driver; installs and removes cleanly with apt
+- [x ] Build environment: everything built in an Ubuntu 22.04 container (oldest glibc we support), in CI; locally only with the maintainer's OK (Docker needs sudo)
+  - `.github/workflows/package.yml`: Ubuntu 22.04 container on GitHub Actions (Rust, FFmpeg and cargo-about cached); result `Depends: libc6 (>= 2.35)`, i.e. 22.04's glibc
+- [x ] .deb: `packaging/deb/build.sh` (plain `dpkg-deb`; cargo-deb not needed), binary in `/usr/bin`, FFmpeg in `/usr/lib/chronoclip/` (rpath), desktop entry, icons, metainfo, licenses; depends on the X11/GL/PulseAudio/fontconfig/xkbcommon runtime packages, recommends the NVIDIA driver; installs and removes cleanly with apt
+  - 8.5 MB. CI installs it on Ubuntu 22.04, 24.04 and 26.04, runs it (bundled FFmpeg loaded, all runtime libraries and `xdg-open` present, menu entry, icon, metainfo) and removes it without leftovers (2026-11-26). Ubuntu's minimized container images skip `/usr/share/doc`, so license files are checked in the package. Install on the maintainer's Mint machine and in-game test: see Verified
 - [ ] AppImage: same binary and FFmpeg plus the other non-system libraries, static AppImage runtime (no `libfuse2` needed on Ubuntu 24.04+); autostart points at the `.AppImage` file (`$APPIMAGE`), not the temporary mount
 - [ ] GitHub Releases: pushing a tag `v*` builds the .deb and the AppImage in CI and attaches them with SHA-256 checksums and release notes
 - [ ] Docs: INSTALL.md user section (.deb and AppImage, NVIDIA requirement), README install section, architecture.md (packaging decisions), AGENTS.md (how to cut a release)
 - [ ] Verified: the .deb installs, records and saves on the maintainer's Mint machine (in-game) and removes cleanly; the AppImage records and saves on Mint; both start in Ubuntu 22.04 and 26.04 containers and the AppImage in a Fedora container in CI
+  - .deb on the maintainer's Mint machine: "it works" (2026-11-26). Open: AppImage on Mint, AppImage on another distro in CI
 
 Out of scope: Flatpak and AUR (dropped: the sandbox fights window capture, process detection and the global hotkey; Flathub would be the reason to revisit), AMD/Intel and Wayland (M9).
 
