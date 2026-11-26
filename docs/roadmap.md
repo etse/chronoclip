@@ -10,7 +10,7 @@ Status: ✅ done · 🚧 in progress · ⬜ not started
 | M3 | Save replay: global hotkey, lossless remux to MP4 | ✅ |
 | M4 | Audio: game audio via PipeWire, optional mic track | ✅ |
 | M5 | Polish: save notification and chime, tray state, start with desktop | ✅ |
-| M6 | Packaging: .deb (Ubuntu/Mint) and AppImage on GitHub Releases | 🚧 |
+| M6 | Packaging: .deb (Ubuntu/Mint) and AppImage on GitHub Releases | ✅ |
 | M7 | Better-looking UI (nice to have): visual redesign, theming, icons | ⬜ |
 | M8 | Other games (long term): record any game, not just WoW: window picker, game detection, per-game clips | ⬜ |
 | M9 | Wayland + AMD/Intel: portal/PipeWire capture, GlobalShortcuts portal, VAAPI | ⬜ |
@@ -34,8 +34,8 @@ Both packages carry the same **LGPL FFmpeg** (built by us, shared libraries): th
 - [x ] GitHub Releases: pushing a tag `v*` builds the .deb and the AppImage in CI and attaches them with SHA-256 checksums and release notes
   - `.github/workflows/release.yml` + `packaging/check-release.sh` + `CHANGELOG.md` + the `release` skill. Also attaches the FFmpeg source tarball. Dry run by hand (`gh workflow run release.yml -f version=0.1.0`) publishes nothing. Dry run skipped (maintainer). **v0.1.0 published 2026-11-26**: https://github.com/etse/chronoclip/releases/tag/v0.1.0 (all 11 jobs green; downloads match SHA256SUMS)
 - [x ] Docs: INSTALL.md user section (.deb and AppImage, NVIDIA requirement), README install section, architecture.md (packaging decisions), AGENTS.md (how to cut a release)
-- [ ] Verified: the .deb installs, records and saves on the maintainer's Mint machine (in-game) and removes cleanly; the AppImage records and saves on Mint; both start in Ubuntu 22.04 and 26.04 containers and the AppImage in a Fedora container in CI
-  - .deb on the maintainer's Mint machine: "it works" (2026-11-26). Open: AppImage on Mint, AppImage on another distro in CI
+- [x ] Verified: the .deb installs, records and saves on the maintainer's Mint machine (in-game) and removes cleanly; the AppImage records and saves on Mint; both start in Ubuntu 22.04 and 26.04 containers and the AppImage in a Fedora container in CI
+  - .deb on the maintainer's Mint machine: "it works" (2026-11-26). AppImage (released v0.1.0) on Mint: "install is verified, its ok" (2026-11-26). AppImage runs on Ubuntu 22.04, Debian 12, Fedora, Arch and openSUSE in CI
 
 Out of scope: Flatpak and AUR (dropped: the sandbox fights window capture, process detection and the global hotkey; Flathub would be the reason to revisit), AMD/Intel and Wayland (M9).
 

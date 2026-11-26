@@ -47,7 +47,8 @@ Requires an X11 session and an NVIDIA GPU with the proprietary driver (530 or ne
 ## Files
 
 - \`SHA256SUMS\`: checksums of all files (\`sha256sum -c SHA256SUMS --ignore-missing\`).
-- \`ffmpeg-*.tar.xz\`: the source code of the FFmpeg libraries both packages contain (LGPL 2.1+).
-  How they are built: \`packaging/ffmpeg/build.sh\` in the source code.
+- \`ffmpeg-*.tar.xz\`: **not needed to install Chronoclip**; both packages already contain FFmpeg.
+  It is the source code of those FFmpeg libraries, provided because FFmpeg's license (LGPL 2.1+)
+  requires it to be available. How they are built: \`packaging/ffmpeg/build.sh\` in the source code.
 EOF
 echo "release notes written to $notes"
