@@ -1,0 +1,279 @@
+// Chronoclip's own controls (instead of the stock std-widgets), styled with Theme.
+
+import { Theme } from "theme.slint";
+
+/// A Lucide icon (stroke SVG), tinted with `color`.
+export component Icon inherits Image {
+    in property <color> color: Theme.text;
+    in property <length> size: 18px;
+    width: self.size;
+    height: self.size;
+    colorize: self.color;
+    image-fit: contain;
+}
+
+export enum ButtonKind { primary, secondary, ghost, danger }
+
+/// Button with an optional icon. Focusable; Enter or Space activates it.
+export component Button {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> has-icon: false;
+    in property <ButtonKind> kind: ButtonKind.secondary;
+    in property <bool> enabled: true;
+    in property <length> height-hint: Theme.control-height;
+    in property <length> font-size: Theme.font-body;
+    callback clicked();
+
+    property <color> fill: !root.enabled ? Theme.surface-raised
+        : root.kind == ButtonKind.primary ? (touch.pressed ? Theme.accent-pressed : touch.has-hover ? Theme.accent-hover : Theme.accent)
+        : root.kind == ButtonKind.danger ? (touch.has-hover ? Theme.danger-hover : Theme.danger)
+        : root.kind == ButtonKind.ghost ? (touch.pressed ? Theme.surface-hover : touch.has-hover ? Theme.surface-raised : transparent)
+        : (touch.pressed ? Theme.border : touch.has-hover ? Theme.surface-hover : Theme.surface-raised);
+    property <color> ink: !root.enabled ? Theme.text-faint
+        : (root.kind == ButtonKind.primary || root.kind == ButtonKind.danger) ? Theme.on-accent : Theme.text;
+
+    min-height: root.height-hint;
+    min-width: layout.preferred-width;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        root.clicked();
+    }
+
+    background := Rectangle {
+        border-radius: Theme.radius;
+        background: root.fill;
+        animate background { duration: 120ms; }
+    }
+
+    focus-ring := Rectangle {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        border-radius: Theme.radius + 3px;
+        border-width: 2px;
+        border-color: focus.has-focus && focus.keyboard-focus ? Theme.focus-ring : transparent;
+    }
+
+    layout := HorizontalLayout {
+        padding-left: Theme.space-l;
+        padding-right: Theme.space-l;
+        spacing: Theme.space-s;
+        alignment: center;
+        if root.has-icon: VerticalLayout {
+            alignment: center;
+            Icon {
+                source: root.icon;
+                color: root.ink;
+                size: root.font-size + 4px;
+            }
+        }
+        Text {
+            text: root.text;
+            color: root.ink;
+            font-size: root.font-size;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
+        clicked => {
+            focus.focus();
+            focus.keyboard-focus = false;
+            root.clicked();
+        }
+    }
+
+    focus := FocusScope {
+
+        // Clicks are handled by the TouchArea (which focuses this); don't swallow the first one.
+
+        focus-on-click: false;
+        // Whether focus came from the keyboard (Tab): only then the ring shows.
+        in-out property <bool> keyboard-focus: false;
+        in-out property <bool> key-down: false;
+        enabled: root.enabled;
+        focus-changed-event(reason) => {
+            self.keyboard-focus = reason == FocusReason.tab-navigation;
+        }
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == " " {
+                self.key-down = true;
+                return accept;
+            }
+            reject
+        }
+        key-released(event) => {
+            if (event.text == Key.Return || event.text == " ") && self.key-down {
+                self.key-down = false;
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+/// Square icon-only button (window controls, small actions).
+export component IconButton {
+    in property <image> icon;
+    in property <string> label;
+    in property <length> size: 32px;
+    in property <length> icon-size: 16px;
+    in property <color> hover-color: Theme.surface-hover;
+    in property <color> hover-ink: Theme.text;
+    in property <length> radius: Theme.radius-small;
+    callback clicked();
+
+    width: root.size;
+    height: root.size;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => {
+        root.clicked();
+    }
+
+    Rectangle {
+        border-radius: root.radius;
+        background: touch.has-hover ? root.hover-color : transparent;
+        animate background { duration: 100ms; }
+    }
+
+    Icon {
+        source: root.icon;
+        size: root.icon-size;
+        color: touch.has-hover ? root.hover-ink : Theme.text-muted;
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+/// A key name shown like a keyboard key, e.g. "Ctrl+F9".
+export component Keycap inherits Rectangle {
+    in property <string> text;
+    in property <color> ink: Theme.text;
+    border-radius: Theme.radius-small;
+    background: #00000040;
+    border-width: 1px;
+    border-color: #ffffff30;
+    min-width: label.preferred-width + 14px;
+    min-height: 22px;
+    label := Text {
+        text: root.text;
+        color: root.ink;
+        font-size: Theme.font-small;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+/// Raised panel for grouping content.
+export component Card inherits Rectangle {
+    border-radius: Theme.radius-large;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: #ffffff0a;
+}
+
+/// Thin horizontal bar showing `value` from 0 to 1.
+export component ProgressBar inherits Rectangle {
+    in property <float> value;
+    in property <color> fill: Theme.accent;
+    height: 8px;
+    border-radius: self.height / 2;
+    background: Theme.control;
+    Rectangle {
+        x: 0;
+        width: parent.width * clamp(root.value, 0, 1);
+        height: parent.height;
+        border-radius: parent.border-radius;
+        background: root.fill;
+        animate width { duration: 400ms; easing: ease-out; }
+    }
+}
+
+/// Text tab in the title bar, Battle.net style: muted text, the active tab bright with an
+/// accent underline.
+export component TabButton {
+    in property <string> text;
+    in property <bool> active;
+    callback clicked();
+
+    min-width: label.preferred-width + 2 * Theme.space-m;
+    accessible-role: tab;
+    accessible-label: root.text;
+    accessible-item-selected: root.active;
+    accessible-action-default => {
+        root.clicked();
+    }
+
+    label := Text {
+        text: root.text;
+        font-size: Theme.font-body;
+        font-weight: 600;
+        color: root.active ? Theme.text : touch.has-hover ? Theme.text-muted : Theme.text-faint;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        animate color { duration: 120ms; }
+    }
+
+    Rectangle {
+        y: parent.height - self.height;
+        height: 3px;
+        width: label.preferred-width;
+        border-radius: 1.5px;
+        background: root.active ? Theme.accent : transparent;
+        animate background { duration: 120ms; }
+    }
+
+    Rectangle {
+        x: -2px;
+        y: (parent.height - self.height) / 2;
+        width: parent.width + 4px;
+        height: label.preferred-height + 12px;
+        border-radius: Theme.radius-small;
+        border-width: 2px;
+        border-color: focus.has-focus && focus.keyboard ? Theme.focus-ring : transparent;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    // Keyboard: Tab to the tab, Enter or Space to open it.
+    focus := FocusScope {
+        focus-on-click: false;
+        in-out property <bool> keyboard: false;
+        focus-gained(reason) => {
+            self.keyboard = reason == FocusReason.tab-navigation;
+        }
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == " " {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+/// Small muted helper text that wraps.
+export component Hint inherits Text {
+    font-size: Theme.font-small;
+    color: Theme.text-faint;
+    wrap: word-wrap;
+}

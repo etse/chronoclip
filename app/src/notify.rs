@@ -132,9 +132,17 @@ pub fn open(path: &Path) {
     }
 }
 
+/// Open a web page in the default browser.
+pub fn open_url(url: &str) {
+    match Command::new("xdg-open").arg(url).spawn() {
+        Ok(mut child) => drop(std::thread::spawn(move || child.wait())),
+        Err(e) => tracing::warn!("could not open {url}: {e}"),
+    }
+}
+
 /// Open the file manager with `path` selected (`org.freedesktop.FileManager1`, supported by
 /// Nemo, Nautilus, Dolphin, …); fall back to opening its folder.
-fn show_in_folder(path: &Path) {
+pub fn show_in_folder(path: &Path) {
     let uri = file_uri(path);
     let shown = zbus::blocking::Connection::session().and_then(|connection| {
         connection

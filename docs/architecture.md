@@ -201,6 +201,15 @@ Clips decode without errors in FFmpeg and play in mpv; `moov` is first. Not chec
 - **Built in Ubuntu 22.04** (CI container) for the glibc 2.35 baseline: one .deb for Ubuntu 22.04–26.04 / Mint 21–23, one AppImage for current distros. CI installs or runs both on 8 systems for every packaging change and every release.
 - **Releases from tags** (`.github/workflows/release.yml`): `packaging/check-release.sh` makes the tag, `Cargo.toml`, the metainfo `<release>` and `CHANGELOG.md` agree; the FFmpeg source tarball is attached because the LGPL notice in both packages promises it. v0.1.0 published 2026-11-26.
 
+## Decisions made in M7
+
+- **Own Slint components instead of std-widgets** (`app/ui/components.slint`, `controls.slint`): the stock `fluent` style can't be restyled to a Battle.net / Discord look. Theme values live in one `Theme` global (`theme.slint`): dark surfaces, Discord blurple `#5865F2` accent, red only for the record dot.
+- **Pages**: `home.slint`, `settings.slint`, `about.slint` in a shell (`main.slint`) with the tabs in the title bar (`titlebar.slint`). The Rust side still talks to `MainWindow` properties/callbacks; the Home page gets structured status (`rec-state`, `rec-title`, `buffer-fraction`, …) and the last clip.
+- **Frameless window by default**, with Slint's `WindowMoveArea` and `maximized`/`minimized`; edge resizing calls winit's `drag_resize_window` (`unstable-winit-030`). The window manager keeps the mouse during a resize, so Chronoclip sends the pointer release itself right after the press is handled, or the edge handle stays pressed. The setting *Chronoclip title bar* switches to the desktop's title bar at runtime.
+- **Focus**: FocusScopes don't take focus on click (`focus-on-click: false`; otherwise they swallow the first click) and show the focus ring only for keyboard focus (Tab).
+- **Inter** (OFL) and **Lucide** icons (ISC) are bundled in the binary (~1.4 MB); their license texts are added to `THIRD-PARTY-LICENSES.txt`.
+- **Pulsing record dot** uses `animation-tick()` only while recording and the window is visible: about +1.2 % of one core while visible, nothing when hidden.
+
 ## Open questions
 
 - Cinnamon "unredirects" fullscreen windows for performance. WoW's borderless "Windowed (Fullscreen)" mode may still be flagged `_NET_WM_STATE_FULLSCREEN` and get unredirected. Our own `XCompositeRedirectWindow` should keep an off-screen pixmap regardless; verify this in M2. Exclusive fullscreen is lower priority.

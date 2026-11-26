@@ -1,63 +1,51 @@
-import { AboutSlint, Button, ComboBox, GroupBox, LineEdit, Palette, Slider, Switch, TabWidget } from "std-widgets.slint";
+import "fonts/Inter-Regular.ttf";
+import "fonts/Inter-SemiBold.ttf";
+import "fonts/Inter-Bold.ttf";
+import { Palette } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { SettingsPage } from "settings.slint";
+import { AboutPage } from "about.slint";
+import { TitleBar } from "titlebar.slint";
+import { HomePage, RecState } from "home.slint";
 
 export { Tray, TrayState } from "tray.slint";
+export { RecState } from "home.slint";
 
-component Hint inherits Text {
-    font-size: 12px;
-    opacity: 0.7;
-    wrap: word-wrap;
-}
-
-// A text field that reports when editing is done: Enter, or focus leaving the field.
-component SettingField inherits LineEdit {
-    callback committed();
-    accepted => {
-        root.committed();
-    }
-    changed has-focus => {
-        if !self.has-focus {
-            root.committed();
-        }
-    }
-}
-
-component FolderField {
-    in property <string> label;
-    in-out property <string> path;
-    callback open();
-    callback committed();
-
-    VerticalLayout {
-        spacing: 4px;
-        Text {
-            text: root.label;
-        }
-
-        HorizontalLayout {
-            spacing: 8px;
-            SettingField {
-                text <=> root.path;
-                horizontal-stretch: 1;
-                committed => {
-                    root.committed();
-                }
-            }
-
-            Button {
-                text: "Open";
-                clicked => {
-                    root.open();
-                }
-            }
-        }
-    }
-}
+/// Window edge or corner the user drags to resize the frameless window.
+export enum ResizeEdge { north, south, east, west, north-east, north-west, south-east, south-west }
 
 export component MainWindow inherits Window {
     title: "Chronoclip";
     icon: @image-url("icons/chronoclip-256.png");
-    preferred-width: 560px;
-    min-width: 440px;
+    no-frame: root.custom-title-bar;
+    background: Theme.background;
+    default-font-family: Theme.font;
+    default-font-size: Theme.font-body;
+    preferred-width: 920px;
+    preferred-height: 640px;
+    min-width: 720px;
+    min-height: 540px;
+
+    // Frameless window with our own title bar (off: the system's title bar).
+    in-out property <bool> custom-title-bar: true;
+    in-out property <int> current-tab: 0;
+
+    // Home page (set from Rust)
+    in property <RecState> rec-state: RecState.waiting;
+    in property <string> rec-title: "Starting…";
+    in property <string> rec-detail;
+    in property <float> buffer-fraction;
+    in property <string> buffer-label;
+    in property <string> buffer-size;
+    in property <bool> has-last-clip;
+    in property <string> last-clip-name;
+    in property <string> last-clip-detail;
+    callback play-last-clip();
+    callback show-last-clip();
+    callback close-window();
+    callback start-resize(ResizeEdge);
+    callback open-url(string);
+    callback hotkey-captured(string, bool, bool, bool, bool);
 
     // Status (set from Rust)
     in property <string> version;
@@ -99,293 +87,144 @@ export component MainWindow inherits Window {
     property <int> minutes: Math.round(root.buffer-minutes);
     property <string> dir-warning: root.buffer-dir-warning(root.buffer-dir);
 
+    init => {
+        // The stock ScrollView (Settings, About) follows the dark theme.
+        Palette.color-scheme = ColorScheme.dark;
+    }
+
     VerticalLayout {
-        padding: 16px;
-        spacing: 12px;
-
-        HorizontalLayout {
-            spacing: 10px;
-            VerticalLayout {
-                alignment: center;
-                Rectangle {
-                    width: 12px;
-                    height: 12px;
-                    border-radius: 6px;
-                    background: root.recording ? #e5484d : #8b8d98;
-                }
+        TitleBar {
+            current-tab: root.current-tab;
+            custom: root.custom-title-bar;
+            maximized: root.maximized;
+            select-tab(index) => {
+                root.current-tab = index;
             }
-
-            Text {
-                text: root.status-text;
-                font-weight: 600;
-                vertical-alignment: center;
-                horizontal-stretch: 1;
-                // Long status lines wrap instead of pushing the button out of the window.
-                wrap: word-wrap;
-                min-width: 120px;
+            minimize => {
+                root.minimized = true;
             }
-
-            Button {
-                text: root.saving ? "Saving…" : "Save replay";
-                enabled: !root.saving;
-                clicked => {
-                    root.save-replay();
-                }
+            toggle-maximize => {
+                root.maximized = !root.maximized;
+            }
+            close => {
+                root.close-window();
             }
         }
 
-        if root.save-text != "": HorizontalLayout {
-            spacing: 8px;
-            Text {
-                text: root.save-text;
-                color: root.save-is-error ? #e5484d : Palette.foreground;
-                wrap: word-wrap;
-                vertical-alignment: center;
-                horizontal-stretch: 1;
+        if root.current-tab == 0: HomePage {
+            state: root.rec-state;
+            title: root.rec-title;
+            detail: root.rec-detail;
+            buffer-fraction: root.buffer-fraction;
+            buffer-label: root.buffer-label;
+            buffer-size: root.buffer-size;
+            hotkey: root.hotkey-error == "" ? root.hotkey : "";
+            pulse: !root.minimized;
+            saving: root.saving;
+            save-text: root.save-text;
+            save-is-error: root.save-is-error;
+            has-last-clip: root.has-last-clip;
+            last-clip-name: root.last-clip-name;
+            last-clip-detail: root.last-clip-detail;
+            save-replay => {
+                root.save-replay();
             }
-
-            if !root.save-is-error && !root.saving: Button {
-                text: "Open clips folder";
-                clicked => {
-                    root.open-folder(root.output-dir);
-                }
+            play-last-clip => {
+                root.play-last-clip();
+            }
+            show-last-clip => {
+                root.show-last-clip();
             }
         }
 
-        TabWidget {
-            Tab {
-                title: "Settings";
-                VerticalLayout {
-                    padding: 12px;
-                    spacing: 12px;
-
-                    GroupBox {
-                        title: "Replay buffer";
-                        VerticalLayout {
-                            spacing: 8px;
-                            HorizontalLayout {
-                                Text {
-                                    text: "Keep the last";
-                                    horizontal-stretch: 1;
-                                }
-
-                                Text {
-                                    text: root.minutes + " minutes";
-                                    font-weight: 600;
-                                }
-                            }
-
-                            Slider {
-                                minimum: 5;
-                                maximum: 45;
-                                value <=> root.buffer-minutes;
-                                released => {
-                                    root.apply();
-                                }
-                            }
-
-                            Hint {
-                                text: root.estimate-disk(root.minutes, root.fps);
-                            }
-
-                            HorizontalLayout {
-                                spacing: 12px;
-                                VerticalLayout {
-                                    spacing: 4px;
-                                    Text {
-                                        text: "Frame rate";
-                                    }
-
-                                    ComboBox {
-                                        model: root.fps-options;
-                                        current-value <=> root.fps;
-                                        selected => {
-                                            root.apply();
-                                        }
-                                    }
-                                }
-
-                                VerticalLayout {
-                                    spacing: 4px;
-                                    Text {
-                                        text: "Encoder";
-                                    }
-
-                                    ComboBox {
-                                        model: root.encoder-options;
-                                        current-value <=> root.encoder;
-                                        selected => {
-                                            root.apply();
-                                        }
-                                    }
-                                }
-                            }
-
-                            HorizontalLayout {
-                                spacing: 12px;
-                                VerticalLayout {
-                                    spacing: 4px;
-                                    horizontal-stretch: 1;
-                                    Text {
-                                        text: "Sound";
-                                    }
-
-                                    ComboBox {
-                                        model: root.audio-options;
-                                        current-value <=> root.audio;
-                                        selected => {
-                                            root.apply();
-                                        }
-                                    }
-                                }
-
-                                VerticalLayout {
-                                    alignment: end;
-                                    Switch {
-                                        text: "Microphone (own track)";
-                                        checked <=> root.microphone;
-                                        toggled => {
-                                            root.apply();
-                                        }
-                                    }
-                                }
-                            }
-
-                            Hint {
-                                text: "Game only: just World of Warcraft, without voice chat or music (all sound until the game's audio is found). All sound: everything you hear.";
-                            }
-                        }
-                    }
-
-                    GroupBox {
-                        title: "Saving";
-                        VerticalLayout {
-                            spacing: 4px;
-                            SettingField {
-                                text <=> root.hotkey;
-                                placeholder-text: "Ctrl+F9";
-                                committed => {
-                                    root.apply();
-                                }
-                            }
-
-                            if root.hotkey-error != "": Hint {
-                                text: root.hotkey-error;
-                                color: #e5484d;
-                                opacity: 1;
-                            }
-
-                            Hint {
-                                text: "Modifiers: Ctrl, Alt, Shift, Super. Keys: F1-F24, A-Z, 0-9. You can also bind the command `chronoclip save` in your desktop's keyboard settings.";
-                            }
-
-                            Switch {
-                                text: "Play a sound when a clip is saved";
-                                checked <=> root.save-sound;
-                                toggled => {
-                                    root.apply();
-                                }
-                            }
-                        }
-                    }
-
-                    GroupBox {
-                        title: "Folders";
-                        VerticalLayout {
-                            spacing: 8px;
-                            FolderField {
-                                label: "Buffer (temporary recording)";
-                                path <=> root.buffer-dir;
-                                open => {
-                                    root.open-folder(root.buffer-dir);
-                                }
-                                committed => {
-                                    root.apply();
-                                }
-                            }
-
-                            if root.dir-warning != "": Hint {
-                                text: root.dir-warning;
-                                color: #e5484d;
-                                opacity: 1;
-                            }
-
-                            FolderField {
-                                label: "Saved clips";
-                                path <=> root.output-dir;
-                                open => {
-                                    root.open-folder(root.output-dir);
-                                }
-                                committed => {
-                                    root.apply();
-                                }
-                            }
-                        }
-                    }
-
-                    GroupBox {
-                        title: "Startup";
-                        Switch {
-                            text: "Start Chronoclip in the tray when you log in";
-                            checked <=> root.autostart;
-                            toggled => {
-                                root.autostart-toggled(self.checked);
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        vertical-stretch: 1;
-                    }
-
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Text {
-                            text: root.message;
-                            color: root.message-is-error ? #e5484d : Palette.foreground;
-                            vertical-alignment: center;
-                            horizontal-stretch: 1;
-                            wrap: word-wrap;
-                        }
-
-                        Button {
-                            text: "Reset to defaults";
-                            clicked => {
-                                root.reset-defaults();
-                            }
-                        }
-
-                    }
-                }
+        if root.current-tab == 1: SettingsPage {
+            hotkey <=> root.hotkey;
+            buffer-minutes <=> root.buffer-minutes;
+            fps <=> root.fps;
+            encoder <=> root.encoder;
+            audio <=> root.audio;
+            microphone <=> root.microphone;
+            save-sound <=> root.save-sound;
+            autostart <=> root.autostart;
+            custom-title-bar <=> root.custom-title-bar;
+            buffer-dir <=> root.buffer-dir;
+            output-dir <=> root.output-dir;
+            fps-options: root.fps-options;
+            encoder-options: root.encoder-options;
+            audio-options: root.audio-options;
+            hotkey-error: root.hotkey-error;
+            message: root.message;
+            message-is-error: root.message-is-error;
+            disk-estimate: root.estimate-disk(root.minutes, root.fps);
+            dir-warning: root.dir-warning;
+            apply => {
+                root.apply();
             }
-
-            Tab {
-                title: "About";
-                VerticalLayout {
-                    padding: 12px;
-                    spacing: 8px;
-                    Text {
-                        text: "Chronoclip " + root.version;
-                        font-size: 18px;
-                        font-weight: 700;
-                    }
-
-                    Text {
-                        text: "Open source replay buffer for World of Warcraft on Linux.";
-                        wrap: word-wrap;
-                    }
-
-                    Hint {
-                        text: "MIT licensed. Not affiliated with or endorsed by Blizzard Entertainment.";
-                    }
-
-                    AboutSlint { }
-
-                    Rectangle {
-                        vertical-stretch: 1;
-                    }
-                }
+            reset-defaults => {
+                root.reset-defaults();
             }
+            open-folder(dir) => {
+                root.open-folder(dir);
+            }
+            autostart-toggled(on) => {
+                root.autostart-toggled(on);
+            }
+            hotkey-captured(text, ctrl, alt, shift, meta) => {
+                root.hotkey-captured(text, ctrl, alt, shift, meta);
+            }
+        }
+
+        if root.current-tab == 2: AboutPage {
+            version: root.version;
+            open-url(url) => {
+                root.open-url(url);
+            }
+        }
+    }
+
+    // Resize handles for the frameless window (the window manager does the resizing).
+    if root.custom-title-bar && !root.maximized: Rectangle {
+        property <length> edge: 5px;
+        property <length> corner: 12px;
+        TouchArea {
+            x: corner; y: 0; width: parent.width - 2 * corner; height: edge;
+            mouse-cursor: MouseCursor.n-resize;
+            pointer-event(e) => { if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { root.start-resize(ResizeEdge.north); } }
+        }
+        TouchArea {
+            x: corner; y: parent.height - edge; width: parent.width - 2 * corner; height: edge;
+            mouse-cursor: MouseCursor.s-resize;
+            pointer-event(e) => { if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { root.start-resize(ResizeEdge.south); } }
+        }
+        TouchArea {
+            x: 0; y: corner; width: edge; height: parent.height - 2 * corner;
+            mouse-cursor: MouseCursor.w-resize;
+            pointer-event(e) => { if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { root.start-resize(ResizeEdge.west); } }
+        }
+        TouchArea {
+            x: parent.width - edge; y: corner; width: edge; height: parent.height - 2 * corner;
+            mouse-cursor: MouseCursor.e-resize;
+            pointer-event(e) => { if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { root.start-resize(ResizeEdge.east); } }
+        }
+        TouchArea {
+            x: 0; y: 0; width: corner; height: corner;
+            mouse-cursor: MouseCursor.nw-resize;
+            pointer-event(e) => { if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { root.start-resize(ResizeEdge.north-west); } }
+        }
+        TouchArea {
+            x: parent.width - corner; y: 0; width: corner; height: corner;
+            mouse-cursor: MouseCursor.ne-resize;
+            pointer-event(e) => { if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { root.start-resize(ResizeEdge.north-east); } }
+        }
+        TouchArea {
+            x: 0; y: parent.height - corner; width: corner; height: corner;
+            mouse-cursor: MouseCursor.sw-resize;
+            pointer-event(e) => { if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { root.start-resize(ResizeEdge.south-west); } }
+        }
+        TouchArea {
+            x: parent.width - corner; y: parent.height - corner; width: corner; height: corner;
+            mouse-cursor: MouseCursor.se-resize;
+            pointer-event(e) => { if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { root.start-resize(ResizeEdge.south-east); } }
         }
     }
 }

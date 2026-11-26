@@ -19,7 +19,8 @@ Copyright: Chronoclip contributors, and the authors of the Rust crates it includ
 License: MIT and others
 Comment: The binary includes Rust crates under MIT, Apache-2.0, BSD, ISC, Zlib, Unicode-3.0,
  MPL-2.0 and other permissive licenses, and Slint under the Slint Royalty-free Desktop,
- Mobile, and Web Applications License 2.0. All texts:
+ Mobile, and Web Applications License 2.0. It embeds the Inter typeface (SIL OFL 1.1) and
+ Lucide icons (ISC; icons derived from Feather: MIT). All texts:
  /usr/share/doc/chronoclip/THIRD-PARTY-LICENSES.txt.gz
 
 License: MIT

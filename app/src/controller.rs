@@ -16,7 +16,7 @@ use crate::hotkey::GlobalHotkey;
 use crate::notify::Alerts;
 use crate::recorder::{Recorder, RecorderConfig, RecorderStatus};
 use crate::save::{self, SavedClip};
-use crate::ui::{MainWindow, Tray, TrayState};
+use crate::ui::{MainWindow, RecState, Tray, TrayState};
 
 /// Set to a window title (substring) to record that window instead of WoW. For testing.
 const WINDOW_ENV: &str = "CHRONOCLIP_WINDOW";
@@ -37,6 +37,8 @@ struct HotkeySlot {
 #[derive(Clone)]
 struct SaveFeedback {
     window: slint::Weak<MainWindow>,
+    /// The clip of the last successful save (for Play / Show in folder on the Home page).
+    last_clip: Arc<Mutex<Option<PathBuf>>>,
     /// Line for the tray tooltip (shown with the next status update) about the last save.
     last_save: Arc<Mutex<Option<String>>>,
     alerts: Arc<Alerts>,
@@ -69,7 +71,21 @@ impl SaveFeedback {
         *self.last_save.lock().unwrap_or_else(|e| e.into_inner()) = Some(tray_line);
         let sound = self.sound.load(Ordering::Relaxed);
         match result {
-            Ok(clip) => self.alerts.clip_saved(clip, sound),
+            Ok(clip) => {
+                self.alerts.clip_saved(clip, sound);
+                *self.last_clip.lock().unwrap_or_else(|e| e.into_inner()) = Some(clip.path.clone());
+                let name = clip.file_name();
+                let detail = format!(
+                    "{} · {}",
+                    format_duration(clip.duration),
+                    format_size(clip.bytes)
+                );
+                let _ = self.window.upgrade_in_event_loop(move |w| {
+                    w.set_has_last_clip(true);
+                    w.set_last_clip_name(name.into());
+                    w.set_last_clip_detail(detail.into());
+                });
+            }
             Err(e) => self.alerts.save_failed(e, sound),
         }
         let _ = self.window.upgrade_in_event_loop(move |w| {
@@ -99,6 +115,7 @@ pub struct Controller {
     output_dir: Mutex<PathBuf>,
     saving: Arc<AtomicBool>,
     last_save: Arc<Mutex<Option<String>>>,
+    last_clip: Arc<Mutex<Option<PathBuf>>>,
     alerts: Arc<Alerts>,
     save_sound: Arc<AtomicBool>,
 }
@@ -121,6 +138,7 @@ impl Controller {
             output_dir: Mutex::new(output_dir),
             saving: Arc::new(AtomicBool::new(false)),
             last_save: Arc::new(Mutex::new(None)),
+            last_clip: Arc::new(Mutex::new(None)),
             alerts,
             save_sound: Arc::new(AtomicBool::new(true)),
         }
@@ -142,6 +160,7 @@ impl Controller {
         SaveFeedback {
             window: self.window.clone(),
             last_save: Arc::clone(&self.last_save),
+            last_clip: Arc::clone(&self.last_clip),
             alerts: Arc::clone(&self.alerts),
             sound: Arc::clone(&self.save_sound),
         }
@@ -159,6 +178,30 @@ impl Controller {
                 self.quit();
                 Response::Ok("quitting".into())
             }
+        }
+    }
+
+    /// Open the last saved clip in the default player.
+    pub fn play_last_clip(&self) {
+        if let Some(path) = self
+            .last_clip
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+        {
+            crate::notify::open(&path);
+        }
+    }
+
+    /// Show the last saved clip in the file manager.
+    pub fn show_last_clip(&self) {
+        if let Some(path) = self
+            .last_clip
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+        {
+            crate::notify::show_in_folder(&path);
         }
     }
 
@@ -319,9 +362,16 @@ impl Controller {
                 tray_text.push('\n');
                 tray_text.push_str(line);
             }
+            let view = status_view(&status, &matcher);
             let _ = window.upgrade_in_event_loop(move |w| {
                 w.set_status_text(text.into());
                 w.set_recording(recording);
+                w.set_rec_state(view.state);
+                w.set_rec_title(view.title.into());
+                w.set_rec_detail(view.detail.into());
+                w.set_buffer_fraction(view.fraction);
+                w.set_buffer_label(view.buffer_label.into());
+                w.set_buffer_size(view.buffer_size.into());
             });
             if let Some(tray) = &tray {
                 let _ = tray.upgrade_in_event_loop(move |t| {
@@ -340,6 +390,84 @@ impl Controller {
         let mut slot = self.recorder.lock().unwrap_or_else(|e| e.into_inner());
         slot.recorder = None;
     }
+}
+
+/// What the Home page shows for a recorder status.
+struct StatusView {
+    state: RecState,
+    title: String,
+    detail: String,
+    fraction: f32,
+    buffer_label: String,
+    buffer_size: String,
+}
+
+fn status_view(status: &RecorderStatus, matcher: &WindowMatcher) -> StatusView {
+    let game = match matcher {
+        WindowMatcher::WorldOfWarcraft => "World of Warcraft".to_owned(),
+        WindowMatcher::TitleContains(t) => t.clone(),
+    };
+    let idle = |state, title: String, detail: String| StatusView {
+        state,
+        title,
+        detail,
+        fraction: 0.0,
+        buffer_label: "Empty".into(),
+        buffer_size: String::new(),
+    };
+    match status {
+        RecorderStatus::WaitingForWindow => idle(
+            RecState::Waiting,
+            format!("Waiting for {game}"),
+            "Start the game: recording begins by itself.".into(),
+        ),
+        RecorderStatus::Recording {
+            width,
+            height,
+            fps,
+            buffered,
+            retention,
+            bytes,
+            skipped_frames,
+            audio,
+        } => {
+            let mut detail = format!("{width}×{height} · {fps} fps");
+            if let Some(audio) = audio {
+                detail.push_str(" · ");
+                detail.push_str(&capitalize(audio));
+            }
+            if *skipped_frames > 0 {
+                let s = if *skipped_frames == 1 { "" } else { "s" };
+                detail.push_str(&format!(" · {skipped_frames} frame{s} skipped"));
+            }
+            StatusView {
+                state: RecState::Recording,
+                title: game,
+                detail,
+                fraction: if retention.is_zero() {
+                    0.0
+                } else {
+                    (buffered.as_secs_f32() / retention.as_secs_f32()).min(1.0)
+                },
+                buffer_label: format!(
+                    "{} of {}",
+                    format_duration(*buffered),
+                    format_duration(*retention)
+                ),
+                buffer_size: format_size(*bytes),
+            }
+        }
+        RecorderStatus::Error(e) => idle(RecState::Error, "Can't record".into(), e.clone()),
+        RecorderStatus::Stopped => idle(RecState::Waiting, "Stopped".into(), String::new()),
+    }
+}
+
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    chars
+        .next()
+        .map(|c| c.to_uppercase().chain(chars).collect())
+        .unwrap_or_default()
 }
 
 fn status_text(status: &RecorderStatus, matcher: &WindowMatcher) -> (String, bool) {

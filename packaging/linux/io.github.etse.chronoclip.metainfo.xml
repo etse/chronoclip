@@ -33,8 +33,12 @@
   <url type="bugtracker">https://github.com/etse/chronoclip/issues</url>
   <screenshots>
     <screenshot type="default">
-      <caption>Recording status and settings</caption>
+      <caption>Recording World of Warcraft, with the Save replay button and the last clip</caption>
       <image>https://raw.githubusercontent.com/etse/chronoclip/main/docs/images/chronoclip-window.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Settings</caption>
+      <image>https://raw.githubusercontent.com/etse/chronoclip/main/docs/images/chronoclip-settings.png</image>
     </screenshot>
   </screenshots>
   <provides>

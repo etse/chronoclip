@@ -22,7 +22,7 @@ use crate::controller::Controller;
 mod generated {
     slint::include_modules!();
 }
-pub use generated::{MainWindow, Tray, TrayState};
+pub use generated::{MainWindow, RecState, ResizeEdge, Tray, TrayState};
 
 fn encoder_label(encoder: EncoderPreference) -> &'static str {
     match encoder {
@@ -61,6 +61,7 @@ fn string_model(items: impl IntoIterator<Item = String>) -> ModelRc<SharedString
 pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: Arc<Controller>) {
     let paths = Rc::new(paths);
     let save_controller = Arc::clone(&controller);
+    let clip_controller = Arc::clone(&controller);
 
     window.set_version(env!("CARGO_PKG_VERSION").into());
     window.set_status_text("Starting…".into());
@@ -198,6 +199,157 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
     window.on_save_replay(move || {
         save_controller.save_replay();
     });
+
+    window.on_play_last_clip({
+        let controller = Arc::clone(&clip_controller);
+        move || controller.play_last_clip()
+    });
+    window.on_show_last_clip(move || clip_controller.show_last_clip());
+
+    window.on_open_url(|url| crate::notify::open_url(&url));
+
+    // Hotkey recorder: name the pressed key, validate like a typed hotkey, then save it.
+    window.on_hotkey_captured({
+        let weak = window.as_weak();
+        move |text, ctrl, alt, shift, meta| {
+            let Some(window) = weak.upgrade() else { return };
+            match hotkey_from_keys(&text, ctrl, alt, shift, meta) {
+                Ok(hotkey) => {
+                    window.set_hotkey(hotkey.into());
+                    window.set_hotkey_error(SharedString::new());
+                    window.invoke_apply();
+                }
+                Err(message) => window.set_hotkey_error(message.into()),
+            }
+        }
+    });
+
+    // Our title bar's close button: like the window manager's, hide to the tray.
+    window.on_close_window({
+        let weak = window.as_weak();
+        move || {
+            if let Some(window) = weak.upgrade()
+                && let Err(e) = window.hide()
+            {
+                tracing::warn!("could not hide window: {e}");
+            }
+        }
+    });
+
+    window.on_start_resize({
+        let weak = window.as_weak();
+        move |edge| {
+            if let Some(window) = weak.upgrade() {
+                start_resize(&window, edge);
+            }
+        }
+    });
+}
+
+/// Turn a key press from the hotkey recorder into a hotkey like `Ctrl+Shift+F9`.
+fn hotkey_from_keys(
+    text: &str,
+    ctrl: bool,
+    alt: bool,
+    shift: bool,
+    meta: bool,
+) -> Result<String, String> {
+    use slint::platform::Key;
+    const F_KEYS: [Key; 24] = [
+        Key::F1,
+        Key::F2,
+        Key::F3,
+        Key::F4,
+        Key::F5,
+        Key::F6,
+        Key::F7,
+        Key::F8,
+        Key::F9,
+        Key::F10,
+        Key::F11,
+        Key::F12,
+        Key::F13,
+        Key::F14,
+        Key::F15,
+        Key::F16,
+        Key::F17,
+        Key::F18,
+        Key::F19,
+        Key::F20,
+        Key::F21,
+        Key::F22,
+        Key::F23,
+        Key::F24,
+    ];
+    let key = if let Some(n) = F_KEYS.iter().position(|k| SharedString::from(*k) == text) {
+        format!("F{}", n + 1)
+    } else {
+        let mut chars = text.chars();
+        match (chars.next(), chars.next()) {
+            (Some(c), None) if c.is_ascii_alphanumeric() => c.to_ascii_uppercase().to_string(),
+            _ => {
+                return Err(
+                    "That key can't be a hotkey. Use F1–F24, or a letter or digit together with Ctrl, Alt or Super."
+                        .into(),
+                );
+            }
+        }
+    };
+    let mut combo = String::new();
+    for (held, name) in [
+        (ctrl, "Ctrl"),
+        (alt, "Alt"),
+        (shift, "Shift"),
+        (meta, "Super"),
+    ] {
+        if held {
+            combo.push_str(name);
+            combo.push('+');
+        }
+    }
+    combo.push_str(&key);
+    combo
+        .parse::<chronoclip_core::Hotkey>()
+        .map(|h| h.to_string())
+        .map_err(|e| capitalize(&format!("{e}.")))
+}
+
+/// Let the window manager resize the frameless window from `edge` (it follows the mouse).
+fn start_resize(window: &MainWindow, edge: ResizeEdge) {
+    use slint::winit_030::WinitWindowAccessor;
+    use slint::winit_030::winit::window::ResizeDirection;
+    let direction = match edge {
+        ResizeEdge::North => ResizeDirection::North,
+        ResizeEdge::South => ResizeDirection::South,
+        ResizeEdge::East => ResizeDirection::East,
+        ResizeEdge::West => ResizeDirection::West,
+        ResizeEdge::NorthEast => ResizeDirection::NorthEast,
+        ResizeEdge::NorthWest => ResizeDirection::NorthWest,
+        ResizeEdge::SouthEast => ResizeDirection::SouthEast,
+        ResizeEdge::SouthWest => ResizeDirection::SouthWest,
+    };
+    let result = window
+        .window()
+        .with_winit_window(|w| w.drag_resize_window(direction));
+    if let Some(Err(e)) = result {
+        tracing::debug!("window manager refused to resize: {e}");
+    }
+    // The window manager now owns the mouse until the resize ends, so the button release never
+    // reaches us: the edge's TouchArea would stay "pressed", keep the resize cursor and swallow the
+    // next click. Release it ourselves, after the current press event is done (Slint sets the
+    // mouse grab when this handler returns), and let the next mouse move set the cursor again.
+    let weak = window.as_weak();
+    slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+        use slint::platform::{PointerEventButton, WindowEvent};
+        let Some(window) = weak.upgrade() else { return };
+        window
+            .window()
+            .dispatch_event(WindowEvent::PointerReleased {
+                position: slint::LogicalPosition::new(0.0, 0.0),
+                button: PointerEventButton::Left,
+            });
+        window.window().dispatch_event(WindowEvent::PointerExited);
+    });
 }
 
 pub fn set_message(window: &MainWindow, text: &str, is_error: bool) {
@@ -213,6 +365,7 @@ fn show_settings(window: &MainWindow, settings: &Settings, paths: &Paths) {
     window.set_audio(audio_label(settings.audio).into());
     window.set_microphone(settings.microphone);
     window.set_save_sound(settings.save_sound);
+    window.set_custom_title_bar(settings.custom_title_bar);
     window.set_buffer_dir(paths.contract_home(&settings.buffer_dir(paths)).into());
     window.set_output_dir(paths.contract_home(&settings.output_dir(paths)).into());
 }
@@ -240,6 +393,7 @@ fn read_settings(window: &MainWindow, paths: &Paths) -> Result<Settings, String>
         audio,
         microphone: window.get_microphone(),
         save_sound: window.get_save_sound(),
+        custom_title_bar: window.get_custom_title_bar(),
         buffer_dir: dir_setting(&window.get_buffer_dir(), &paths.default_buffer_dir, paths),
         output_dir: dir_setting(&window.get_output_dir(), &paths.default_output_dir, paths),
     };

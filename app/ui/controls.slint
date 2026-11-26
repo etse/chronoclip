@@ -1,0 +1,626 @@
+// Input controls for the Settings page, styled with Theme: toggle, slider, segmented control,
+// dropdown, text field and hotkey recorder. All are keyboard-operable with a visible focus ring.
+
+import { Theme } from "theme.slint";
+import { Icon } from "components.slint";
+
+/// Focus ring drawn around a control when it has keyboard focus.
+component FocusRing inherits Rectangle {
+    in property <bool> visible-ring;
+    in property <length> radius: Theme.radius;
+    // Callers place it: x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px.
+    border-radius: root.radius + 3px;
+    border-width: 2px;
+    border-color: root.visible-ring ? Theme.focus-ring : transparent;
+}
+
+/// On/off switch. Space or Enter toggles it.
+export component Toggle {
+    in-out property <bool> checked;
+    in property <string> label;
+    callback toggled(bool);
+
+    width: 44px;
+    height: 24px;
+    accessible-role: switch;
+    accessible-label: root.label;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-action-default => {
+        root.flip();
+    }
+
+    function flip() {
+        root.checked = !root.checked;
+        root.toggled(root.checked);
+    }
+
+    Rectangle {
+        border-radius: self.height / 2;
+        background: root.checked ? (touch.has-hover ? Theme.accent-hover : Theme.accent) : (touch.has-hover ? Theme.border-strong : Theme.border);
+        animate background { duration: 150ms; }
+    }
+
+    Rectangle {
+        x: root.checked ? parent.width - self.width - 3px : 3px;
+        y: 3px;
+        width: parent.height - 6px;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: #ffffff;
+        animate x { duration: 150ms; easing: ease-out; }
+    }
+
+    FocusRing {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        radius: parent.height / 2;
+        visible-ring: focus.has-focus && focus.keyboard;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => {
+            root.flip();
+        }
+    }
+
+    focus := FocusScope {
+
+        // Clicks are handled by the TouchArea (which focuses this); don't swallow the first one.
+
+        focus-on-click: false;
+
+        // Focus ring only when focus came from the keyboard (Tab), not from a click.
+
+        in-out property <bool> keyboard: false;
+
+        focus-gained(reason) => {
+
+            self.keyboard = reason == FocusReason.tab-navigation;
+
+        }
+        key-pressed(event) => {
+            if event.text == " " || event.text == Key.Return {
+                root.flip();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+/// Horizontal slider with whole-number steps. `released` fires when a drag or key change ends.
+export component Slider {
+    in-out property <float> value;
+    in property <float> minimum: 0;
+    in property <float> maximum: 100;
+    in property <string> label;
+    callback released(float);
+
+    property <float> fraction: (root.value - root.minimum) / max(1, root.maximum - root.minimum);
+    property <length> thumb: 18px;
+
+    height: 24px;
+    min-width: 160px;
+    accessible-role: slider;
+    accessible-label: root.label;
+    accessible-value: Math.round(root.value);
+    accessible-value-minimum: root.minimum;
+    accessible-value-maximum: root.maximum;
+    accessible-value-step: 1;
+
+    function set-from(x: length) {
+        root.value = Math.round(clamp(root.minimum + (x - root.thumb / 2) / (root.width - root.thumb) * (root.maximum - root.minimum), root.minimum, root.maximum));
+    }
+
+    track := Rectangle {
+        x: root.thumb / 2;
+        y: (parent.height - self.height) / 2;
+        width: parent.width - root.thumb;
+        height: 6px;
+        border-radius: 3px;
+        background: Theme.border;
+        Rectangle {
+            x: 0;
+            width: parent.width * root.fraction;
+            border-radius: parent.border-radius;
+            background: Theme.accent;
+        }
+    }
+
+    Rectangle {
+        x: root.fraction * (parent.width - root.thumb);
+        y: (parent.height - self.height) / 2;
+        width: root.thumb;
+        height: root.thumb;
+        border-radius: self.width / 2;
+        background: #ffffff;
+        drop-shadow-blur: 4px;
+        drop-shadow-color: #00000080;
+        border-width: touch.pressed || focus.has-focus ? 3px : 0;
+        border-color: Theme.accent;
+    }
+
+    FocusRing {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        radius: 6px;
+        visible-ring: focus.has-focus && focus.keyboard;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                focus.focus();
+                root.set-from(self.mouse-x);
+            } else if e.kind == PointerEventKind.up {
+                root.released(root.value);
+            }
+        }
+        moved => {
+            if self.pressed {
+                root.set-from(self.mouse-x);
+            }
+        }
+    }
+
+    focus := FocusScope {
+
+        // Clicks are handled by the TouchArea (which focuses this); don't swallow the first one.
+
+        focus-on-click: false;
+
+        // Focus ring only when focus came from the keyboard (Tab), not from a click.
+
+        in-out property <bool> keyboard: false;
+
+        focus-gained(reason) => {
+
+            self.keyboard = reason == FocusReason.tab-navigation;
+
+        }
+        key-pressed(event) => {
+            if event.text == Key.LeftArrow || event.text == Key.DownArrow {
+                root.value = max(root.minimum, root.value - 1);
+                return accept;
+            }
+            if event.text == Key.RightArrow || event.text == Key.UpArrow {
+                root.value = min(root.maximum, root.value + 1);
+                return accept;
+            }
+            reject
+        }
+        key-released(event) => {
+            if event.text == Key.LeftArrow || event.text == Key.DownArrow || event.text == Key.RightArrow || event.text == Key.UpArrow {
+                root.released(root.value);
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+/// A row of options of which one is selected (e.g. 30 · 60 · 120 · 144). Arrow keys move.
+export component Segmented {
+    in property <[string]> options;
+    in-out property <string> current;
+    in property <string> label;
+    callback selected(string);
+
+    // Slint has no loops in expressions; segmented controls have at most six options.
+    property <int> current-index: root.options[0] == root.current ? 0
+        : root.options[1] == root.current ? 1
+        : root.options[2] == root.current ? 2
+        : root.options[3] == root.current ? 3
+        : root.options[4] == root.current ? 4
+        : root.options[5] == root.current ? 5 : -1;
+
+    function choose(i: int) {
+        if i >= 0 && i < root.options.length && root.options[i] != root.current {
+            root.current = root.options[i];
+            root.selected(root.current);
+        }
+    }
+
+    height: Theme.control-height;
+    accessible-role: tab-list;
+    accessible-label: root.label;
+
+    Rectangle {
+        border-radius: Theme.radius;
+        background: Theme.control;
+        border-width: 1px;
+        border-color: Theme.border;
+    }
+
+    HorizontalLayout {
+        padding: 3px;
+        spacing: 3px;
+        for option[i] in root.options: Rectangle {
+            horizontal-stretch: 1;
+            min-width: text.preferred-width + 2 * Theme.space-m;
+            border-radius: Theme.radius - 2px;
+            background: i == root.current-index ? Theme.accent : item.has-hover ? Theme.surface-hover : transparent;
+            animate background { duration: 120ms; }
+            accessible-role: tab;
+            accessible-label: option;
+            accessible-item-selected: i == root.current-index;
+            text := Text {
+                text: option;
+                color: i == root.current-index ? Theme.on-accent : Theme.text-muted;
+                font-size: Theme.font-body;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            item := TouchArea {
+                mouse-cursor: MouseCursor.pointer;
+                clicked => {
+                    focus.focus();
+                    root.choose(i);
+                }
+            }
+        }
+    }
+
+    FocusRing {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        visible-ring: focus.has-focus && focus.keyboard;
+    }
+
+    focus := FocusScope {
+
+        // Clicks are handled by the TouchArea (which focuses this); don't swallow the first one.
+
+        focus-on-click: false;
+
+        // Focus ring only when focus came from the keyboard (Tab), not from a click.
+
+        in-out property <bool> keyboard: false;
+
+        focus-gained(reason) => {
+
+            self.keyboard = reason == FocusReason.tab-navigation;
+
+        }
+        key-pressed(event) => {
+            if event.text == Key.LeftArrow {
+                root.choose(root.current-index - 1);
+                return accept;
+            }
+            if event.text == Key.RightArrow {
+                root.choose(root.current-index + 1);
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+/// Dropdown: shows the current value; click (or Space/Enter) opens the list below it.
+export component Select {
+    in property <[string]> options;
+    in-out property <string> current;
+    in property <string> label;
+    callback selected(string);
+
+    // Up/Down change the value without opening the list (like a native combo box).
+    property <int> current-index: root.options[0] == root.current ? 0
+        : root.options[1] == root.current ? 1
+        : root.options[2] == root.current ? 2
+        : root.options[3] == root.current ? 3
+        : root.options[4] == root.current ? 4
+        : root.options[5] == root.current ? 5 : -1;
+
+    function choose(i: int) {
+        if i >= 0 && i < root.options.length && root.options[i] != root.current {
+            root.current = root.options[i];
+            root.selected(root.current);
+        }
+    }
+
+    height: Theme.control-height;
+    min-width: 200px;
+    accessible-role: combobox;
+    accessible-label: root.label;
+    accessible-value: root.current;
+
+    Rectangle {
+        border-radius: Theme.radius;
+        background: touch.has-hover ? Theme.surface-hover : Theme.control;
+        border-width: 1px;
+        border-color: focus.has-focus ? Theme.accent : Theme.border;
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-m;
+        padding-right: Theme.space-s;
+        Text {
+            text: root.current;
+            color: Theme.text;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+
+        VerticalLayout {
+            alignment: center;
+            Icon {
+                source: @image-url("icons/lucide/chevron-down.svg");
+                color: Theme.text-muted;
+                size: 16px;
+            }
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => {
+            focus.focus();
+            popup.show();
+        }
+    }
+
+    focus := FocusScope {
+
+        // Clicks are handled by the TouchArea (which focuses this); don't swallow the first one.
+
+        focus-on-click: false;
+
+        // Focus ring only when focus came from the keyboard (Tab), not from a click.
+
+        in-out property <bool> keyboard: false;
+
+        focus-gained(reason) => {
+
+            self.keyboard = reason == FocusReason.tab-navigation;
+
+        }
+        key-pressed(event) => {
+            if event.text == " " || event.text == Key.Return {
+                popup.show();
+                return accept;
+            }
+            if event.text == Key.DownArrow {
+                root.choose(root.current-index + 1);
+                return accept;
+            }
+            if event.text == Key.UpArrow {
+                root.choose(root.current-index - 1);
+                return accept;
+            }
+            reject
+        }
+    }
+
+    popup := PopupWindow {
+        x: 0;
+        y: root.height + 4px;
+        width: root.width;
+        Rectangle {
+            border-radius: Theme.radius;
+            background: Theme.surface-raised;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: #00000080;
+            drop-shadow-offset-y: 6px;
+            VerticalLayout {
+                padding: 4px;
+                for option in root.options: Rectangle {
+                    height: Theme.control-height - 4px;
+                    border-radius: Theme.radius-small;
+                    background: option == root.current ? Theme.accent-soft : choice.has-hover ? Theme.surface-hover : transparent;
+                    HorizontalLayout {
+                        padding-left: Theme.space-m;
+                        Text {
+                            text: option;
+                            color: option == root.current ? Theme.text : Theme.text-muted;
+                            font-size: Theme.font-body;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    choice := TouchArea {
+                        mouse-cursor: MouseCursor.pointer;
+                        clicked => {
+                            if option != root.current {
+                                root.current = option;
+                                root.selected(option);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Single-line text field. `committed` fires on Enter or when focus leaves it.
+export component TextField {
+    in-out property <string> text;
+    in property <string> placeholder;
+    in property <string> label;
+    callback committed();
+
+    height: Theme.control-height;
+    min-width: 120px;
+    accessible-role: text-input;
+    accessible-label: root.label;
+    accessible-value: root.text;
+
+    Rectangle {
+        border-radius: Theme.radius;
+        background: Theme.control;
+        border-width: 1px;
+        border-color: input.has-focus ? Theme.accent : touch.has-hover ? Theme.border-strong : Theme.border;
+        animate border-color { duration: 120ms; }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => {
+            input.focus();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-m;
+        padding-right: Theme.space-m;
+        Rectangle {
+            clip: true;
+            input := TextInput {
+                // The TextField itself is the accessible text input.
+                accessible-role: none;
+                text <=> root.text;
+                color: Theme.text;
+                font-size: Theme.font-body;
+                vertical-alignment: center;
+                single-line: true;
+                selection-background-color: Theme.accent;
+                selection-foreground-color: Theme.on-accent;
+                accepted => {
+                    root.committed();
+                }
+                changed has-focus => {
+                    if !self.has-focus {
+                        root.committed();
+                    }
+                }
+            }
+
+            if root.text == "" && !input.has-focus: Text {
+                text: root.placeholder;
+                color: Theme.text-faint;
+                font-size: Theme.font-body;
+                vertical-alignment: center;
+                horizontal-alignment: left;
+                width: parent.width;
+            }
+        }
+    }
+}
+
+/// Hotkey recorder: click (or focus and press Enter), then press the key combination.
+/// Esc cancels. `captured` gets the key text and modifiers; Rust names and validates it.
+export component HotkeyField {
+    in property <string> hotkey;
+    in property <bool> has-error;
+    callback captured(string, bool, bool, bool, bool);
+
+    property <bool> recording: false;
+
+    height: Theme.control-height;
+    min-width: 220px;
+    accessible-role: button;
+    accessible-label: root.recording ? "Press the new hotkey" : "Save hotkey " + root.hotkey + ", activate to change";
+    accessible-action-default => {
+        root.recording = true;
+        focus.focus();
+    }
+
+    Rectangle {
+        border-radius: Theme.radius;
+        background: root.recording ? Theme.accent-soft : touch.has-hover ? Theme.surface-hover : Theme.control;
+        border-width: 1px;
+        border-color: root.recording ? Theme.accent : root.has-error ? Theme.danger : focus.has-focus ? Theme.accent : Theme.border;
+        animate background, border-color { duration: 120ms; }
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-m;
+        padding-right: Theme.space-m;
+        spacing: Theme.space-s;
+        VerticalLayout {
+            alignment: center;
+            Icon {
+                source: @image-url("icons/lucide/keyboard.svg");
+                color: root.recording ? Theme.accent : Theme.text-muted;
+                size: 16px;
+            }
+        }
+
+        Text {
+            text: root.recording ? "Press keys…  (Esc cancels)" : root.hotkey;
+            color: root.recording ? Theme.text : Theme.text;
+            font-size: Theme.font-body;
+            font-weight: root.recording ? 400 : 600;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+
+        if !root.recording: Text {
+            text: "Change";
+            color: Theme.text-faint;
+            font-size: Theme.font-small;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => {
+            root.recording = true;
+            focus.focus();
+        }
+    }
+
+    focus := FocusScope {
+
+        // Clicks are handled by the TouchArea (which focuses this); don't swallow the first one.
+
+        focus-on-click: false;
+
+        // Focus ring only when focus came from the keyboard (Tab), not from a click.
+
+        in-out property <bool> keyboard: false;
+
+        focus-gained(reason) => {
+
+            self.keyboard = reason == FocusReason.tab-navigation;
+
+        }
+        focus-lost => {
+            root.recording = false;
+        }
+        key-pressed(event) => {
+            if !root.recording {
+                if event.text == Key.Return || event.text == " " {
+                    root.recording = true;
+                    return accept;
+                }
+                return reject;
+            }
+            if event.text == Key.Escape {
+                root.recording = false;
+                return accept;
+            }
+            // Wait for the actual key; modifiers alone don't finish the recording.
+            if event.text == Key.Control || event.text == Key.ControlR || event.text == Key.Shift || event.text == Key.ShiftR || event.text == Key.Alt || event.text == Key.AltGr || event.text == Key.Meta || event.text == Key.MetaR {
+                return accept;
+            }
+            root.recording = false;
+            root.captured(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta);
+            accept
+        }
+    }
+
+    FocusRing {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        visible-ring: focus.has-focus && focus.keyboard && !root.recording;
+    }
+}

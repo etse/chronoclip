@@ -1,0 +1,269 @@
+// About page: what Chronoclip is, links, why it's safe, and credits/licenses.
+
+import { AboutSlint, ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Button, ButtonKind, Card, Icon } from "components.slint";
+
+component Credit {
+    in property <string> name;
+    in property <string> what;
+    in property <string> license;
+
+    HorizontalLayout {
+        spacing: Theme.space-m;
+        VerticalLayout {
+            spacing: 1px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.name;
+                color: Theme.text;
+                font-size: Theme.font-body;
+                font-weight: 600;
+            }
+
+            Text {
+                text: root.what;
+                color: Theme.text-faint;
+                font-size: Theme.font-small;
+                wrap: word-wrap;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: 22px;
+                width: badge.preferred-width + 16px;
+                border-radius: 11px;
+                background: Theme.surface-raised;
+                border-width: 1px;
+                border-color: Theme.border;
+                badge := Text {
+                    text: root.license;
+                    color: Theme.text-muted;
+                    font-size: Theme.font-small;
+                    font-weight: 600;
+                }
+            }
+        }
+    }
+}
+
+export component AboutPage {
+    in property <string> version;
+    callback open-url(string);
+
+    ScrollView {
+        HorizontalLayout {
+            alignment: center;
+            VerticalLayout {
+                max-width: 780px;
+                padding: Theme.space-xl;
+                spacing: Theme.space-l;
+
+                // Hero
+                HorizontalLayout {
+                    spacing: Theme.space-xl;
+                    padding-bottom: Theme.space-s;
+                    Image {
+                        source: @image-url("icons/chronoclip-256.png");
+                        width: 88px;
+                        height: 88px;
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: Theme.space-xs;
+                        HorizontalLayout {
+                            spacing: Theme.space-m;
+                            alignment: start;
+                            Text {
+                                text: "Chronoclip";
+                                color: Theme.text;
+                                font-size: Theme.font-hero;
+                                font-weight: 700;
+                            }
+
+                            VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    height: 22px;
+                                    width: version-text.preferred-width + 16px;
+                                    border-radius: 11px;
+                                    background: Theme.accent-soft;
+                                    version-text := Text {
+                                        text: "v" + root.version;
+                                        color: Theme.text;
+                                        font-size: Theme.font-small;
+                                        font-weight: 700;
+                                    }
+                                }
+                            }
+                        }
+
+                        Text {
+                            text: "Replay buffer for World of Warcraft on Linux. Always recording, save the last minutes with one key.";
+                            color: Theme.text-muted;
+                            font-size: Theme.font-body;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: Theme.space-s;
+                    alignment: start;
+                    Button {
+                        text: "GitHub";
+                        has-icon: true;
+                        icon: @image-url("icons/lucide/external-link.svg");
+                        clicked => {
+                            root.open-url("https://github.com/etse/chronoclip");
+                        }
+                    }
+
+                    Button {
+                        text: "Releases";
+                        has-icon: true;
+                        icon: @image-url("icons/lucide/download.svg");
+                        clicked => {
+                            root.open-url("https://github.com/etse/chronoclip/releases");
+                        }
+                    }
+
+                    Button {
+                        text: "Report a problem";
+                        kind: ButtonKind.ghost;
+                        has-icon: true;
+                        icon: @image-url("icons/lucide/bug.svg");
+                        clicked => {
+                            root.open-url("https://github.com/etse/chronoclip/issues");
+                        }
+                    }
+                }
+
+                Card {
+                    HorizontalLayout {
+                        padding: Theme.space-xl;
+                        spacing: Theme.space-l;
+                        VerticalLayout {
+                            alignment: start;
+                            Rectangle {
+                                width: 40px;
+                                height: 40px;
+                                border-radius: Theme.radius;
+                                background: Theme.success.with-alpha(0.15);
+                                Icon {
+                                    source: @image-url("icons/lucide/shield-check.svg");
+                                    color: Theme.success;
+                                    size: 20px;
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            spacing: Theme.space-xs;
+                            Text {
+                                text: "Safe for your account";
+                                color: Theme.text;
+                                font-size: Theme.font-subtitle;
+                                font-weight: 700;
+                            }
+
+                            Text {
+                                text: "Chronoclip only records what your desktop already shows and plays, through the official X11 and sound server interfaces. It never injects into, hooks or reads the memory of the game, and it sends nothing over the network.";
+                                color: Theme.text-muted;
+                                font-size: Theme.font-body;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                }
+
+                Card {
+                    VerticalLayout {
+                        padding: Theme.space-xl;
+                        spacing: Theme.space-l;
+                        HorizontalLayout {
+                            spacing: Theme.space-s;
+                            VerticalLayout {
+                                alignment: center;
+                                Icon {
+                                    source: @image-url("icons/lucide/scale.svg");
+                                    color: Theme.accent;
+                                    size: 16px;
+                                }
+                            }
+
+                            Text {
+                                text: "CREDITS & LICENSES";
+                                color: Theme.text-muted;
+                                font-size: Theme.font-small;
+                                font-weight: 700;
+                                letter-spacing: 1px;
+                            }
+                        }
+
+                        Credit {
+                            name: "Chronoclip";
+                            what: "Open source, made by Chronoclip contributors.";
+                            license: "MIT";
+                        }
+
+                        Credit {
+                            name: "FFmpeg";
+                            what: "Video and audio encoding. Bundled as separate libraries; source attached to every release.";
+                            license: "LGPL 2.1+";
+                        }
+
+                        Credit {
+                            name: "Slint";
+                            what: "The user interface toolkit.";
+                            license: "Royalty-free";
+                        }
+
+                        Credit {
+                            name: "Inter";
+                            what: "Typeface by Rasmus Andersson.";
+                            license: "OFL 1.1";
+                        }
+
+                        Credit {
+                            name: "Lucide";
+                            what: "Icons.";
+                            license: "ISC";
+                        }
+
+                        Text {
+                            text: "All license texts are in the package (/usr/share/doc/chronoclip) and in the source code.";
+                            color: Theme.text-faint;
+                            font-size: Theme.font-small;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: Theme.space-l;
+                    alignment: space-between;
+                    Text {
+                        text: "World of Warcraft is a trademark of Blizzard Entertainment, Inc. Chronoclip is not affiliated with or endorsed by Blizzard.";
+                        color: Theme.text-faint;
+                        font-size: Theme.font-small;
+                        wrap: word-wrap;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    // Slint's royalty-free license asks for this attribution; kept small.
+                    VerticalLayout {
+                        alignment: center;
+                        AboutSlint {
+                            width: 132px;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

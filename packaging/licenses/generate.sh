@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Write THIRD-PARTY-LICENSES.txt: the licenses of all Rust crates in the chronoclip binary.
+# Write THIRD-PARTY-LICENSES.txt: the licenses of all Rust crates and embedded assets (font,
+# icons) in the chronoclip binary.
 # Usage: packaging/licenses/generate.sh OUTPUT_FILE
 # Needs: cargo-about (`cargo install cargo-about --locked --features cli`), python3.
 set -euo pipefail
@@ -31,3 +32,16 @@ for p in slint:
 print()
 print(text)
 ' >> "$out"
+
+# Assets embedded in the binary (app/ui): the Inter typeface and Lucide icons.
+{
+  echo "--------------------------------------------------------------------------------"
+  echo "Inter typeface (app/ui/fonts), SIL Open Font License 1.1"
+  echo
+  cat app/ui/fonts/LICENSE-Inter-OFL.txt
+  echo
+  echo "--------------------------------------------------------------------------------"
+  echo "Lucide icons (app/ui/icons/lucide), ISC License (icons derived from Feather: MIT)"
+  echo
+  cat app/ui/icons/lucide/LICENSE-Lucide.txt
+} >> "$out"

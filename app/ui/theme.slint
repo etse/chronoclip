@@ -1,0 +1,53 @@
+// Chronoclip's dark theme: colours, sizes and type scale used by every component.
+// Look: Battle.net launcher layout, Discord-like dark surfaces, Discord blurple as the accent.
+// Red is reserved for the record dot (it matches the app icon).
+
+export global Theme {
+    // Surfaces, darkest to lightest.
+    out property <color> title-bar: #111214;
+    out property <color> background: #1e1f22;
+    out property <color> surface: #2b2d31;
+    out property <color> surface-raised: #313338;
+    out property <color> surface-hover: #35373c;
+    out property <color> control: #1e1f22;
+    out property <color> border: #3f4147;
+    out property <color> border-strong: #4e5058;
+
+    // Text.
+    out property <color> text: #f2f3f5;
+    out property <color> text-muted: #b5bac1;
+    out property <color> text-faint: #80848e;
+
+    // Accent (Discord blurple) and states.
+    out property <color> accent: #5865f2;
+    out property <color> accent-hover: #4752c4;
+    out property <color> accent-pressed: #3c45a5;
+    out property <color> accent-soft: #5865f233;
+    out property <color> on-accent: #ffffff;
+    out property <color> record: #e5484d;
+    out property <color> success: #23a55a;
+    out property <color> warning: #f0b232;
+    out property <color> danger: #f23f43;
+    out property <color> danger-hover: #da373c;
+    out property <color> focus-ring: #00a8fc;
+
+    // Shape and spacing.
+    out property <length> radius-small: 4px;
+    out property <length> radius: 8px;
+    out property <length> radius-large: 12px;
+    out property <length> space-xs: 4px;
+    out property <length> space-s: 8px;
+    out property <length> space-m: 12px;
+    out property <length> space-l: 16px;
+    out property <length> space-xl: 24px;
+    out property <length> control-height: 36px;
+    out property <length> title-bar-height: 48px;
+
+    // Type scale (Inter).
+    out property <string> font: "Inter";
+    out property <length> font-small: 12px;
+    out property <length> font-body: 14px;
+    out property <length> font-subtitle: 16px;
+    out property <length> font-title: 20px;
+    out property <length> font-hero: 28px;
+}

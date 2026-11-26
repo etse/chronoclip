@@ -7,7 +7,8 @@ Chronoclip continuously records your gameplay to a rolling buffer on disk. When 
 > **Status:** 🚧 Pre-alpha. Recording and saving replays with sound work on X11 with an NVIDIA GPU. See [Roadmap](#roadmap).
 
 <p align="center">
-  <img src="docs/images/chronoclip-window.png" alt="The Chronoclip window: recording status, a Save replay button, and settings for buffer length, frame rate, encoder, sound, microphone, hotkey, save sound, folders and starting at login" width="560">
+  <img src="docs/images/chronoclip-window.png" alt="Chronoclip's Home page: a dark window with Home, Settings and About tabs in the title bar, a RECORDING badge for World of Warcraft at 1920×1080 and 60 fps with game sound, a replay buffer bar at 0:16 of 10:00, a large blue Save replay button showing Ctrl+F9, and the last saved clip with Play and Show in folder buttons" width="440">
+  <img src="docs/images/chronoclip-settings.png" alt="Chronoclip's Settings page: cards for Recording (replay length slider at 10 min, frame rate 30/60/120/144, encoder dropdown) and Sound (Game only, All sound or Off, microphone toggle)" width="440">
 </p>
 
 ## What it is
@@ -54,6 +55,7 @@ Works today (X11 + NVIDIA):
 - **Instant saves**: saving joins the already-encoded segments into an MP4 without re-encoding, so it takes seconds, not minutes.
 - **Hardware encoding** with NVENC, GPU-only capture path.
 - **Finds the WoW window by itself** (Wine / Proton `Wow.exe`).
+- **Modern dark window** in the style of the Battle.net launcher and Discord: big status, the replay buffer filling up, a big **Save replay** button with your hotkey, the last clip with **Play** / **Show in folder**, settings in cards, a hotkey recorder (click and press your keys).
 - **Fully native and lightweight**: Rust all the way down, native UI with [Slint](https://slint.dev). No Electron, no webview.
 - **Tray app** that keeps recording when the window is closed. The icon shows the state: red while recording, grey while waiting for WoW, amber on errors.
 - **You hear when a clip is saved**: a short chime (a different tone if saving failed), also while playing, plus a desktop notification with **Play** and **Show in folder**.
@@ -70,7 +72,7 @@ Planned (see [Roadmap](#roadmap)):
 | Layer | Choice |
 |---|---|
 | Language | Rust (single Cargo workspace, no Node / JS toolchain) |
-| UI | Slint (native, software renderer: crisp text, no OpenGL in the UI) |
+| UI | Slint (native, software renderer: crisp text, no OpenGL in the UI) with our own dark components, the Inter typeface and Lucide icons |
 | Video capture | XComposite → OpenGL texture (X11, GPU-only path), xdg-desktop-portal ScreenCast + PipeWire (Wayland) |
 | Audio capture | PipeWire (through its PulseAudio API, per-application capture), AAC |
 | Encoding / muxing | FFmpeg (libav*, LGPL, dynamically linked): NVENC (via CUDA), VAAPI |
@@ -146,11 +148,11 @@ Clips go to `~/Videos/Chronoclip/Chronoclip_YYYY-MM-DD_HH-MM-SS.mp4` (H.264 + AA
 
 ## Configuration
 
-Settings are changed in the window and saved automatically: lists and switches at once, the slider when you let go, text fields (hotkey, folders) when you press Enter or leave the field.
+Settings are changed on the **Settings** tab and saved automatically: buttons and switches at once, the slider when you let go, folder fields when you press Enter or leave the field. To change the hotkey, click it and press the new key combination (Esc cancels).
 
 | Setting | Default | Range / notes |
 |---|---|---|
-| Save hotkey | `Ctrl+F9` | Ctrl / Alt / Shift / Super + F1–F24, A–Z or 0–9 (bare F-keys allowed). Shown in red if another program already uses it |
+| Save hotkey | `Ctrl+F9` | Ctrl / Alt / Shift / Super + F1–F24, A–Z or 0–9 (bare F-keys allowed); set by pressing it. Shown in red if another program already uses it |
 | Buffer length | 10 min | 5 to 45 min |
 | Buffer location | `~/.cache/chronoclip/buffer` | Must be on disk (SSD), **not** a RAM-backed tmpfs like `/tmp` or `$XDG_RUNTIME_DIR` on many distros |
 | Output folder | `~/Videos/Chronoclip` (XDG videos dir) | |
@@ -160,6 +162,7 @@ Settings are changed in the window and saved automatically: lists and switches a
 | Sound | Game only | *Game only* (WoW's own audio; all sound until WoW's audio is found), *All sound* (everything you hear, incl. voice chat and music), *Off* |
 | Microphone | Off | Your default microphone as a second audio track (players and Discord play only the first track) |
 | Play a sound when a clip is saved | On | Chime on success, lower tone on failure |
+| Chronoclip title bar | On | Off: your desktop's normal window title bar instead of Chronoclip's own |
 | Start in the tray when you log in | Off | Writes `~/.config/autostart/chronoclip.desktop` (not stored in `settings.toml`; the switch shows whether that file exists) |
 
 **Disk usage tip:** at 1080p60 and ~20 Mbit/s, a 10 minute buffer uses about 1.5 GB. A 45 minute buffer at the same bitrate uses about 6.8 GB.
@@ -175,7 +178,7 @@ Detailed status and task checklists: [docs/roadmap.md](docs/roadmap.md).
 5. **M4, audio** ✅ game audio via PipeWire (game only or all sound), optional mic track
 6. **M5, polish** ✅ save notification and chime, tray state, start with desktop
 7. **M6, packaging** ✅ .deb (Ubuntu/Mint) and AppImage on GitHub Releases (v0.1.0)
-8. **M7, modern dark UI** 🚧 Battle.net-style tabs, Discord-like look (blurple accent), custom title bar, hotkey recorder, last clip card
+8. **M7, modern dark UI** ✅ Battle.net-style tabs, Discord-like look (blurple accent), custom title bar, hotkey recorder, last clip card
 9. **M8, other games** (long term): record any game, not just WoW: pick the window to record, detect common games, name clips after the game
 10. **M9, Wayland + AMD/Intel**: portal/PipeWire capture, GlobalShortcuts portal, VAAPI
 

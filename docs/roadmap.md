@@ -11,7 +11,7 @@ Status: ✅ done · 🚧 in progress · ⬜ not started
 | M4 | Audio: game audio via PipeWire, optional mic track | ✅ |
 | M5 | Polish: save notification and chime, tray state, start with desktop | ✅ |
 | M6 | Packaging: .deb (Ubuntu/Mint) and AppImage on GitHub Releases | ✅ |
-| M7 | Modern dark UI: Battle.net-style tabs, Discord-like look, custom title bar | 🚧 |
+| M7 | Modern dark UI: Battle.net-style tabs, Discord-like look, custom title bar | ✅ |
 | M8 | Other games (long term): record any game, not just WoW: window picker, game detection, per-game clips | ⬜ |
 | M9 | Wayland + AMD/Intel: portal/PipeWire capture, GlobalShortcuts portal, VAAPI | ⬜ |
 
@@ -23,16 +23,24 @@ Decisions (maintainer, 2026-11-26): **top tabs** like the Battle.net launcher (H
 
 Approach: own Slint components instead of the stock `fluent` widgets (they can't be restyled this far). The window keeps getting its data through the same properties and callbacks; new data (buffer fill, last clip) comes from Rust like today. Theme + Home page first, then a screenshot for the maintainer's feedback before the rest.
 
-- [ ] Theme (`app/ui/theme.slint`): dark palette, accent, radii, spacing, type scale; bundled **Inter** font (OFL, license file shipped); dark system title bar hint where the system one is used
-- [ ] Component kit (`app/ui/components/`): buttons (primary/secondary/ghost), toggle, slider, dropdown (own popup), text field, card, tab bar, progress bar, status badge, icon (**Lucide** SVGs, ISC); hover/pressed/focus states, keyboard focus visible
-- [ ] Custom title bar: frameless window with our own dark bar (logo, tabs, minimize/close), drag to move, double-click to maximize, resize edges; setting to fall back to the system title bar if the window manager misbehaves
-- [ ] Home page: status card (state, game, resolution, fps, sound), buffer bar (filled/length, size), big **Save replay** button with the hotkey, last clip card (length, size, time; **Play**, **Show in folder**), save progress/result
-- [ ] Settings page: the existing settings in cards (Recording, Sound, Saving, Folders, Startup), same auto-save behaviour, folder warnings and errors in the new style
-- [ ] Hotkey recorder: click the field, press the combination (Esc cancels); same validation as today
-- [ ] About page: version, links, licenses; keeps Slint's "Made with Slint" attribution (license requirement)
-- [ ] Pulsing record dot, animated only while the window is visible (no redraws while hidden or minimized)
-- [ ] Checks: readable at 100–200 % scaling, keyboard navigation (Tab, Enter, Space, arrows), no CPU while hidden; README screenshots retaken (readme-screenshot skill); licenses (Inter, Lucide) in the packages' license files and INSTALL/README if needed
-- [ ] Verified in-game: the maintainer uses the new window while playing (status, save, settings)
+- [x] Theme (`app/ui/theme.slint`): dark palette, accent, radii, spacing, type scale; bundled **Inter** font (OFL, license file shipped); dark system title bar hint where the system one is used
+- [x] Component kit (`app/ui/components/`): buttons (primary/secondary/ghost), toggle, slider, dropdown (own popup), text field, card, tab bar, progress bar, status badge, icon (**Lucide** SVGs, ISC); hover/pressed/focus states, keyboard focus visible
+  - `app/ui/components.slint` (button, icon button, keycap, card, progress bar, tab) and `controls.slint` (toggle, slider, segmented control, dropdown, text field, hotkey field). Fixed: the focus scopes swallowed the first click (`focus-on-click: false`)
+- [x] Custom title bar: frameless window with our own dark bar (logo, tabs, minimize/close), drag to move, double-click to maximize, resize edges; setting to fall back to the system title bar if the window manager misbehaves
+  - Slint's built-in `WindowMoveArea`, `maximized`/`minimized`; edge resizing via winit `drag_resize_window` (`unstable-winit-030`). Fixed after the maintainer's test: the window manager keeps the mouse release, so the edge handle stayed pressed and swallowed the next click; a release is now sent right after the resize starts. Fallback toggle verified (Cinnamon's title bar appears at once)
+- [x] Home page: status card (state, game, resolution, fps, sound), buffer bar (filled/length, size), big **Save replay** button with the hotkey, last clip card (length, size, time; **Play**, **Show in folder**), save progress/result
+  - Maintainer: "I like the look on the home page" (2026-11-26)
+- [x] Settings page: the existing settings in cards (Recording, Sound, Saving, Folders, Startup), same auto-save behaviour, folder warnings and errors in the new style
+- [x] Hotkey recorder: click the field, press the combination (Esc cancels); same validation as today
+  - Verified with XTest: Ctrl+Shift+F10 recorded, saved and registered; Tab gives a clear error
+- [x] About page: version, links, licenses; keeps Slint's "Made with Slint" attribution (license requirement)
+  - Slint badge kept small (132 px). Maintainer on Settings/About: "I like it, this is good enough for a first version. Looks more modern!" (2026-11-27)
+- [x] Pulsing record dot, animated only while the window is visible (no redraws while hidden or minimized)
+  - About +1.2 % of one core while the window is visible; nothing when hidden
+- [x ] Checks: readable at 100–200 % scaling, keyboard navigation (Tab, Enter, Space, arrows), no CPU while hidden; README screenshots retaken (readme-screenshot skill); licenses (Inter, Lucide) in the packages' license files and INSTALL/README if needed
+  - Done: Inter and Lucide license texts in `THIRD-PARTY-LICENSES.txt` and the .deb copyright file; README screenshots (Home + Settings) and text, AppStream screenshots. Keyboard pass (2026-11-27): tabs and **Save replay** were not reachable and the dropdown list was mouse-only; fixed (focusable tabs and Save button, Up/Down in the dropdown, focus ring only for keyboard focus). Order Home: tabs → Save replay → Play → Show in folder; Settings: every control in reading order, the page scrolls to the focused one. Keys verified against settings.toml: slider ←/→, segmented ←/→, dropdown ↓, toggles Space, hotkey field Enter/Esc. 200 % (`SLINT_SCALE_FACTOR=2`, 1840×1280) and the 720×540 minimum: no clipping on any page
+- [x ] Verified in-game: the maintainer uses the new window while playing (status, save, settings)
+  - Maintainer: resize bug "verified … fixed. Did my manual test. Seems ok" (2026-11-27)
 
 Out of scope: styling the tray *menu* (drawn by the desktop), clip library (dropped in M5), light theme.
 
@@ -46,16 +54,16 @@ Both packages carry the same **LGPL FFmpeg** (built by us, shared libraries): th
 - [x] License files for binaries: third-party Rust licenses (`cargo-about`), FFmpeg's LGPL text, its exact source and build configuration, Slint attribution (already in About)
   - Rust crates: `packaging/licenses/generate.sh` (incl. the Slint royalty-free text that cargo-about 0.9 can't include). FFmpeg: `build.sh` writes `FFMPEG-LICENSE.txt` (source URL, SHA-256, configure flags) and the LGPL text; the release workflow must also attach the FFmpeg source tarball, as that file promises
 - [x] LGPL FFmpeg build script (`packaging/ffmpeg/`): a fixed FFmpeg release, shared libs, no GPL/nonfree parts, only what Chronoclip uses (`h264_nvenc` + CUDA via `nv-codec-headers`, `aac`, mpegts/mp4 muxing and demuxing); the app is compiled against it
-- [x ] Build environment: everything built in an Ubuntu 22.04 container (oldest glibc we support), in CI; locally only with the maintainer's OK (Docker needs sudo)
+- [x] Build environment: everything built in an Ubuntu 22.04 container (oldest glibc we support), in CI; locally only with the maintainer's OK (Docker needs sudo)
   - `.github/workflows/package.yml`: Ubuntu 22.04 container on GitHub Actions (Rust, FFmpeg and cargo-about cached); result `Depends: libc6 (>= 2.35)`, i.e. 22.04's glibc
-- [x ] .deb: `packaging/deb/build.sh` (plain `dpkg-deb`; cargo-deb not needed), binary in `/usr/bin`, FFmpeg in `/usr/lib/chronoclip/` (rpath), desktop entry, icons, metainfo, licenses; depends on the X11/GL/PulseAudio/fontconfig/xkbcommon runtime packages, recommends the NVIDIA driver; installs and removes cleanly with apt
+- [x] .deb: `packaging/deb/build.sh` (plain `dpkg-deb`; cargo-deb not needed), binary in `/usr/bin`, FFmpeg in `/usr/lib/chronoclip/` (rpath), desktop entry, icons, metainfo, licenses; depends on the X11/GL/PulseAudio/fontconfig/xkbcommon runtime packages, recommends the NVIDIA driver; installs and removes cleanly with apt
   - 8.5 MB. CI installs it on Ubuntu 22.04, 24.04 and 26.04, runs it (bundled FFmpeg loaded, all runtime libraries and `xdg-open` present, menu entry, icon, metainfo) and removes it without leftovers (2026-11-26). Ubuntu's minimized container images skip `/usr/share/doc`, so license files are checked in the package. Install on the maintainer's Mint machine and in-game test: see Verified
-- [x ] AppImage: same binary and FFmpeg plus the other non-system libraries, static AppImage runtime (no `libfuse2` needed on Ubuntu 24.04+); autostart points at the `.AppImage` file (`$APPIMAGE`), not the temporary mount
+- [x] AppImage: same binary and FFmpeg plus the other non-system libraries, static AppImage runtime (no `libfuse2` needed on Ubuntu 24.04+); autostart points at the `.AppImage` file (`$APPIMAGE`), not the temporary mount
   - `packaging/appimage/build.sh` (appimagetool 1.9.1, type2-runtime 20251108, both pinned by SHA-256): 12 MB; only FFmpeg is bundled (the binary links just glibc, libgcc and fontconfig). On Mint: records and saves H.264 + AAC from its mount with the bundled FFmpeg; the autostart entry is repointed from the mount to `$APPIMAGE`. CI runs it on Ubuntu 22.04, Debian 12, Fedora, Arch and openSUSE
-- [x ] GitHub Releases: pushing a tag `v*` builds the .deb and the AppImage in CI and attaches them with SHA-256 checksums and release notes
+- [x] GitHub Releases: pushing a tag `v*` builds the .deb and the AppImage in CI and attaches them with SHA-256 checksums and release notes
   - `.github/workflows/release.yml` + `packaging/check-release.sh` + `CHANGELOG.md` + the `release` skill. Also attaches the FFmpeg source tarball. Dry run by hand (`gh workflow run release.yml -f version=0.1.0`) publishes nothing. Dry run skipped (maintainer). **v0.1.0 published 2026-11-26**: https://github.com/etse/chronoclip/releases/tag/v0.1.0 (all 11 jobs green; downloads match SHA256SUMS)
-- [x ] Docs: INSTALL.md user section (.deb and AppImage, NVIDIA requirement), README install section, architecture.md (packaging decisions), AGENTS.md (how to cut a release)
-- [x ] Verified: the .deb installs, records and saves on the maintainer's Mint machine (in-game) and removes cleanly; the AppImage records and saves on Mint; both start in Ubuntu 22.04 and 26.04 containers and the AppImage in a Fedora container in CI
+- [x] Docs: INSTALL.md user section (.deb and AppImage, NVIDIA requirement), README install section, architecture.md (packaging decisions), AGENTS.md (how to cut a release)
+- [x] Verified: the .deb installs, records and saves on the maintainer's Mint machine (in-game) and removes cleanly; the AppImage records and saves on Mint; both start in Ubuntu 22.04 and 26.04 containers and the AppImage in a Fedora container in CI
   - .deb on the maintainer's Mint machine: "it works" (2026-11-26). AppImage (released v0.1.0) on Mint: "install is verified, its ok" (2026-11-26). AppImage runs on Ubuntu 22.04, Debian 12, Fedora, Arch and openSUSE in CI
 
 Out of scope: Flatpak and AUR (dropped: the sandbox fights window capture, process detection and the global hotkey; Flathub would be the reason to revisit), AMD/Intel and Wayland (M9).
@@ -69,7 +77,7 @@ Goal: you notice every save, even in-game; you can see at a glance whether Chron
 - [x] Tray icon shows state: red while recording, grey while waiting for WoW, warning icon on errors; tooltip unchanged
 - [x] Start with desktop: settings switch that writes/removes `~/.config/autostart/chronoclip.desktop` (`Exec=<binary> --hidden`); default off; reflects the file's actual state
 - [x] WoW detection: already in place since M2/M4 (waits for `Wow.exe`, starts and restarts by itself); verified with Retail (`_forever_`); Classic not tested
-- [x ] Docs: README (features, settings), architecture.md (notifications, chime), INSTALL.md only if dependencies change
+- [x] Docs: README (features, settings), architecture.md (notifications, chime), INSTALL.md only if dependencies change
 - [x] Verified in-game: chime audible in WoW (borderless) on save; notification after alt-tab; tray icon colors; autostart after a re-login
   - Maintainer: "it seems good" (2026-11-26)
 

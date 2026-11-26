@@ -61,6 +61,8 @@ pub struct Settings {
     pub microphone: bool,
     /// Play a chime when a clip is saved (and a different one when saving fails).
     pub save_sound: bool,
+    /// Frameless window with Chronoclip's own title bar; off: the desktop's title bar.
+    pub custom_title_bar: bool,
     /// `None` means [`Paths::default_buffer_dir`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub buffer_dir: Option<PathBuf>,
@@ -79,6 +81,7 @@ impl Default for Settings {
             audio: AudioMode::default(),
             microphone: false,
             save_sound: true,
+            custom_title_bar: true,
             buffer_dir: None,
             output_dir: None,
         }
@@ -287,6 +290,7 @@ mod tests {
             audio: AudioMode::All,
             microphone: true,
             save_sound: false,
+            custom_title_bar: false,
             buffer_dir: Some("/mnt/ssd/buffer".into()),
             output_dir: None,
         };

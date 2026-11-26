@@ -1,0 +1,406 @@
+// Settings page: cards per topic, each row with its label on the left and the control on the
+// right (Discord-style). Every change saves at once (`apply`), as before.
+
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Button, ButtonKind, Card, Hint, Icon } from "components.slint";
+import { HotkeyField, Segmented, Select, Slider, TextField, Toggle } from "controls.slint";
+
+component Section inherits Card {
+    in property <string> title;
+    in property <image> icon;
+
+    VerticalLayout {
+        padding: Theme.space-xl;
+        spacing: Theme.space-l;
+        HorizontalLayout {
+            spacing: Theme.space-s;
+            VerticalLayout {
+                alignment: center;
+                Icon {
+                    source: root.icon;
+                    color: Theme.accent;
+                    size: 16px;
+                }
+            }
+
+            Text {
+                text: root.title;
+                color: Theme.text-muted;
+                font-size: Theme.font-small;
+                font-weight: 700;
+                letter-spacing: 1px;
+                vertical-alignment: center;
+            }
+        }
+
+        @children
+    }
+}
+
+/// Label and description on the left, the control on the right.
+component Row {
+    in property <string> title;
+    in property <string> description;
+
+    HorizontalLayout {
+        spacing: Theme.space-xl;
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.title;
+                color: Theme.text;
+                font-size: Theme.font-body;
+                font-weight: 600;
+            }
+
+            if root.description != "": Text {
+                text: root.description;
+                color: Theme.text-faint;
+                font-size: Theme.font-small;
+                wrap: word-wrap;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            @children
+        }
+    }
+}
+
+component Divider inherits Rectangle {
+    height: 1px;
+    background: Theme.border;
+    opacity: 0.6;
+}
+
+/// A folder path that can be edited, with an Open button; a warning below if there is one.
+component FolderRow {
+    in property <string> title;
+    in property <string> description;
+    in-out property <string> path;
+    in property <string> warning;
+    callback open();
+    callback committed();
+
+    VerticalLayout {
+        spacing: Theme.space-s;
+        VerticalLayout {
+            spacing: 2px;
+            Text {
+                text: root.title;
+                color: Theme.text;
+                font-size: Theme.font-body;
+                font-weight: 600;
+            }
+
+            Text {
+                text: root.description;
+                color: Theme.text-faint;
+                font-size: Theme.font-small;
+                wrap: word-wrap;
+            }
+        }
+
+        HorizontalLayout {
+            spacing: Theme.space-s;
+            TextField {
+                text <=> root.path;
+                label: root.title;
+                horizontal-stretch: 1;
+                committed => {
+                    root.committed();
+                }
+            }
+
+            Button {
+                text: "Open";
+                has-icon: true;
+                icon: @image-url("icons/lucide/folder-open.svg");
+                clicked => {
+                    root.open();
+                }
+            }
+        }
+
+        if root.warning != "": Text {
+            text: root.warning;
+            color: Theme.warning;
+            font-size: Theme.font-small;
+            wrap: word-wrap;
+        }
+    }
+}
+
+export component SettingsPage {
+    // Settings (two-way bound to the window; Rust reads them on apply).
+    in-out property <string> hotkey;
+    in-out property <float> buffer-minutes;
+    in-out property <string> fps;
+    in-out property <string> encoder;
+    in-out property <string> audio;
+    in-out property <bool> microphone;
+    in-out property <bool> save-sound;
+    in-out property <bool> autostart;
+    in-out property <bool> custom-title-bar;
+    in-out property <string> buffer-dir;
+    in-out property <string> output-dir;
+    in property <[string]> fps-options;
+    in property <[string]> encoder-options;
+    in property <[string]> audio-options;
+    in property <string> hotkey-error;
+    in property <string> message;
+    in property <bool> message-is-error;
+    in property <string> disk-estimate;
+    in property <string> dir-warning;
+    callback apply();
+    callback reset-defaults();
+    callback open-folder(string);
+    callback autostart-toggled(bool);
+    callback hotkey-captured(string, bool, bool, bool, bool);
+
+    ScrollView {
+        HorizontalLayout {
+            alignment: center;
+            VerticalLayout {
+                max-width: 780px;
+                padding: Theme.space-xl;
+                spacing: Theme.space-l;
+
+                VerticalLayout {
+                    spacing: 2px;
+                    padding-bottom: Theme.space-s;
+                    Text {
+                        text: "Settings";
+                        color: Theme.text;
+                        font-size: Theme.font-title;
+                        font-weight: 700;
+                    }
+
+                    Text {
+                        text: "Changes are saved right away.";
+                        color: Theme.text-faint;
+                        font-size: Theme.font-small;
+                    }
+                }
+
+                Section {
+                    title: "RECORDING";
+                    icon: @image-url("icons/lucide/monitor.svg");
+
+                    Row {
+                        title: "Replay length";
+                        description: root.disk-estimate;
+                        HorizontalLayout {
+                            spacing: Theme.space-m;
+                            Slider {
+                                width: 220px;
+                                minimum: 5;
+                                maximum: 45;
+                                label: "Replay length in minutes";
+                                value <=> root.buffer-minutes;
+                                released => {
+                                    root.apply();
+                                }
+                            }
+
+                            Rectangle {
+                                width: 64px;
+                                height: 28px;
+                                border-radius: Theme.radius-small;
+                                background: Theme.accent-soft;
+                                Text {
+                                    text: Math.round(root.buffer-minutes) + " min";
+                                    color: Theme.text;
+                                    font-size: Theme.font-body;
+                                    font-weight: 700;
+                                }
+                            }
+                        }
+                    }
+
+                    Divider { }
+
+                    Row {
+                        title: "Frame rate";
+                        description: "Frames per second of the recording.";
+                        Segmented {
+                            options: root.fps-options;
+                            current <=> root.fps;
+                            label: "Frame rate";
+                            selected => {
+                                root.apply();
+                            }
+                        }
+                    }
+
+                    Divider { }
+
+                    Row {
+                        title: "Encoder";
+                        description: "Auto picks NVENC on NVIDIA graphics cards.";
+                        Select {
+                            options: root.encoder-options;
+                            current <=> root.encoder;
+                            label: "Encoder";
+                            selected => {
+                                root.apply();
+                            }
+                        }
+                    }
+                }
+
+                Section {
+                    title: "SOUND";
+                    icon: @image-url("icons/lucide/volume-2.svg");
+
+                    Row {
+                        title: "Game sound";
+                        description: "Game only: just World of Warcraft, without voice chat or music. All sound: everything you hear.";
+                        Segmented {
+                            options: root.audio-options;
+                            current <=> root.audio;
+                            label: "Sound to record";
+                            selected => {
+                                root.apply();
+                            }
+                        }
+                    }
+
+                    Divider { }
+
+                    Row {
+                        title: "Microphone";
+                        description: "Your microphone as a separate audio track.";
+                        Toggle {
+                            label: "Record the microphone";
+                            checked <=> root.microphone;
+                            toggled => {
+                                root.apply();
+                            }
+                        }
+                    }
+                }
+
+                Section {
+                    title: "SAVING";
+                    icon: @image-url("icons/lucide/film.svg");
+
+                    Row {
+                        title: "Save hotkey";
+                        description: root.hotkey-error != "" ? root.hotkey-error : "Works while the game has focus. You can also bind `chronoclip save` in your desktop's keyboard settings.";
+                        HotkeyField {
+                            hotkey: root.hotkey;
+                            has-error: root.hotkey-error != "";
+                            captured(text, ctrl, alt, shift, meta) => {
+                                root.hotkey-captured(text, ctrl, alt, shift, meta);
+                            }
+                        }
+                    }
+
+                    Divider { }
+
+                    Row {
+                        title: "Sound when saving";
+                        description: "A short chime when a clip is saved, a lower tone if saving failed.";
+                        Toggle {
+                            label: "Play a sound when a clip is saved";
+                            checked <=> root.save-sound;
+                            toggled => {
+                                root.apply();
+                            }
+                        }
+                    }
+                }
+
+                Section {
+                    title: "FOLDERS";
+                    icon: @image-url("icons/lucide/hard-drive.svg");
+
+                    FolderRow {
+                        title: "Replay buffer";
+                        description: "Temporary recording. Needs a few GB on a fast disk.";
+                        path <=> root.buffer-dir;
+                        warning: root.dir-warning;
+                        open => {
+                            root.open-folder(root.buffer-dir);
+                        }
+                        committed => {
+                            root.apply();
+                        }
+                    }
+
+                    Divider { }
+
+                    FolderRow {
+                        title: "Saved clips";
+                        description: "Where your clips go.";
+                        path <=> root.output-dir;
+                        open => {
+                            root.open-folder(root.output-dir);
+                        }
+                        committed => {
+                            root.apply();
+                        }
+                    }
+                }
+
+                Section {
+                    title: "WINDOW & STARTUP";
+                    icon: @image-url("icons/lucide/app-window.svg");
+
+                    Row {
+                        title: "Start with the desktop";
+                        description: "Start Chronoclip in the tray when you log in.";
+                        Toggle {
+                            label: "Start Chronoclip in the tray when you log in";
+                            checked <=> root.autostart;
+                            toggled(on) => {
+                                root.autostart-toggled(on);
+                            }
+                        }
+                    }
+
+                    Divider { }
+
+                    Row {
+                        title: "Chronoclip title bar";
+                        description: "Off: use your desktop's normal window title bar.";
+                        Toggle {
+                            label: "Use Chronoclip's own title bar";
+                            checked <=> root.custom-title-bar;
+                            toggled => {
+                                root.apply();
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: Theme.space-m;
+                    Text {
+                        text: root.message;
+                        color: root.message-is-error ? Theme.danger : Theme.text-muted;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        wrap: word-wrap;
+                    }
+
+                    Button {
+                        text: "Reset to defaults";
+                        kind: ButtonKind.ghost;
+                        has-icon: true;
+                        icon: @image-url("icons/lucide/rotate-ccw.svg");
+                        clicked => {
+                            root.reset-defaults();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

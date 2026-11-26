@@ -1,0 +1,115 @@
+// Dark title bar with the app name, the page tabs and (for the frameless window) window buttons.
+// Battle.net launcher style: tabs live in the title bar.
+
+import { Theme } from "theme.slint";
+import { IconButton, TabButton } from "components.slint";
+
+export component TitleBar inherits Rectangle {
+    in property <int> current-tab;
+    in property <[string]> tabs: ["Home", "Settings", "About"];
+    // Frameless window: the bar moves the window and shows its buttons.
+    in property <bool> custom: true;
+    in property <bool> maximized;
+    callback select-tab(int);
+    callback minimize();
+    callback toggle-maximize();
+    callback close();
+
+    height: Theme.title-bar-height;
+    background: Theme.title-bar;
+
+    WindowMoveArea {
+        enabled: root.custom;
+        HorizontalLayout {
+            padding-left: Theme.space-l;
+            padding-right: root.custom ? Theme.space-s : Theme.space-l;
+            spacing: 0;
+
+            HorizontalLayout {
+                spacing: Theme.space-s;
+                padding-right: Theme.space-xl;
+                VerticalLayout {
+                    alignment: center;
+                    Image {
+                        source: @image-url("icons/chronoclip-64.png");
+                        width: 22px;
+                        height: 22px;
+                    }
+                }
+
+                Text {
+                    text: "CHRONOCLIP";
+                    color: Theme.text;
+                    font-size: Theme.font-body;
+                    font-weight: 700;
+                    letter-spacing: 1.5px;
+                    vertical-alignment: center;
+                }
+            }
+
+            for tab[index] in root.tabs: TabButton {
+                text: tab;
+                active: index == root.current-tab;
+                clicked => {
+                    root.select-tab(index);
+                }
+            }
+
+            // Empty part of the bar: drag to move (WindowMoveArea), double-click to maximize.
+            TouchArea {
+                horizontal-stretch: 1;
+                double-clicked => {
+                    if root.custom {
+                        root.toggle-maximize();
+                    }
+                }
+            }
+
+            if root.custom: HorizontalLayout {
+                alignment: end;
+                spacing: Theme.space-xs;
+                VerticalLayout {
+                    alignment: center;
+                    IconButton {
+                        icon: @image-url("icons/lucide/minus.svg");
+                        label: "Minimize";
+                        clicked => {
+                            root.minimize();
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    IconButton {
+                        icon: root.maximized ? @image-url("icons/lucide/copy.svg") : @image-url("icons/lucide/square.svg");
+                        icon-size: 14px;
+                        label: root.maximized ? "Restore" : "Maximize";
+                        clicked => {
+                            root.toggle-maximize();
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    IconButton {
+                        icon: @image-url("icons/lucide/x.svg");
+                        label: "Close to tray";
+                        hover-color: Theme.danger;
+                        hover-ink: Theme.on-accent;
+                        clicked => {
+                            root.close();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: #000000;
+    }
+}
