@@ -175,7 +175,7 @@ Detailed status and task checklists: [docs/roadmap.md](docs/roadmap.md).
 5. **M4, audio** ✅ game audio via PipeWire (game only or all sound), optional mic track
 6. **M5, polish** ✅ save notification and chime, tray state, start with desktop
 7. **M6, packaging** ✅ .deb (Ubuntu/Mint) and AppImage on GitHub Releases (v0.1.0)
-8. **M7, better-looking UI** (nice to have): visual redesign of the window and tray menu, consistent theming (light/dark), icons
+8. **M7, modern dark UI** 🚧 Battle.net-style tabs, Discord-like look (blurple accent), custom title bar, hotkey recorder, last clip card
 9. **M8, other games** (long term): record any game, not just WoW: pick the window to record, detect common games, name clips after the game
 10. **M9, Wayland + AMD/Intel**: portal/PipeWire capture, GlobalShortcuts portal, VAAPI
 

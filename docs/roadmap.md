@@ -11,9 +11,30 @@ Status: ✅ done · 🚧 in progress · ⬜ not started
 | M4 | Audio: game audio via PipeWire, optional mic track | ✅ |
 | M5 | Polish: save notification and chime, tray state, start with desktop | ✅ |
 | M6 | Packaging: .deb (Ubuntu/Mint) and AppImage on GitHub Releases | ✅ |
-| M7 | Better-looking UI (nice to have): visual redesign, theming, icons | ⬜ |
+| M7 | Modern dark UI: Battle.net-style tabs, Discord-like look, custom title bar | 🚧 |
 | M8 | Other games (long term): record any game, not just WoW: window picker, game detection, per-game clips | ⬜ |
 | M9 | Wayland + AMD/Intel: portal/PipeWire capture, GlobalShortcuts portal, VAAPI | ⬜ |
+
+## M7: Modern dark UI
+
+Goal: a window that looks like the apps gamers use every day (Battle.net launcher, Discord): dark, clean, one accent colour, big clear status and a big **Save replay** button, while the Rust side and the recording stay as they are.
+
+Decisions (maintainer, 2026-11-26): **top tabs** like the Battle.net launcher (Home · Settings · About), **Discord blurple** accent (`#5865F2`, red stays for the record dot), extras: hotkey recorder, last clip card, pulsing record dot, custom title bar. Dark only.
+
+Approach: own Slint components instead of the stock `fluent` widgets (they can't be restyled this far). The window keeps getting its data through the same properties and callbacks; new data (buffer fill, last clip) comes from Rust like today. Theme + Home page first, then a screenshot for the maintainer's feedback before the rest.
+
+- [ ] Theme (`app/ui/theme.slint`): dark palette, accent, radii, spacing, type scale; bundled **Inter** font (OFL, license file shipped); dark system title bar hint where the system one is used
+- [ ] Component kit (`app/ui/components/`): buttons (primary/secondary/ghost), toggle, slider, dropdown (own popup), text field, card, tab bar, progress bar, status badge, icon (**Lucide** SVGs, ISC); hover/pressed/focus states, keyboard focus visible
+- [ ] Custom title bar: frameless window with our own dark bar (logo, tabs, minimize/close), drag to move, double-click to maximize, resize edges; setting to fall back to the system title bar if the window manager misbehaves
+- [ ] Home page: status card (state, game, resolution, fps, sound), buffer bar (filled/length, size), big **Save replay** button with the hotkey, last clip card (length, size, time; **Play**, **Show in folder**), save progress/result
+- [ ] Settings page: the existing settings in cards (Recording, Sound, Saving, Folders, Startup), same auto-save behaviour, folder warnings and errors in the new style
+- [ ] Hotkey recorder: click the field, press the combination (Esc cancels); same validation as today
+- [ ] About page: version, links, licenses; keeps Slint's "Made with Slint" attribution (license requirement)
+- [ ] Pulsing record dot, animated only while the window is visible (no redraws while hidden or minimized)
+- [ ] Checks: readable at 100–200 % scaling, keyboard navigation (Tab, Enter, Space, arrows), no CPU while hidden; README screenshots retaken (readme-screenshot skill); licenses (Inter, Lucide) in the packages' license files and INSTALL/README if needed
+- [ ] Verified in-game: the maintainer uses the new window while playing (status, save, settings)
+
+Out of scope: styling the tray *menu* (drawn by the desktop), clip library (dropped in M5), light theme.
 
 ## M6: Packaging
 
