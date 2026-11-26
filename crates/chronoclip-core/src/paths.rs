@@ -73,6 +73,21 @@ impl Paths {
     }
 }
 
+/// `file://` URI for an absolute path, percent-encoding everything except unreserved
+/// characters and `/` (for D-Bus calls such as `org.freedesktop.FileManager1.ShowItems`).
+pub fn file_uri(path: &Path) -> String {
+    use std::os::unix::ffi::OsStrExt;
+    let mut uri = String::from("file://");
+    for &b in path.as_os_str().as_bytes() {
+        if b.is_ascii_alphanumeric() || b"-._~/".contains(&b) {
+            uri.push(char::from(b));
+        } else {
+            uri.push_str(&format!("%{b:02X}"));
+        }
+    }
+    uri
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,5 +129,19 @@ mod tests {
         // Round trip.
         let shown = p.contract_home(&p.default_buffer_dir);
         assert_eq!(p.expand_home(&shown), p.default_buffer_dir);
+    }
+
+    #[test]
+    fn file_uris_are_percent_encoded() {
+        assert_eq!(
+            file_uri(Path::new(
+                "/home/me/Videos/Chronoclip/Chronoclip_2026-11-26_21-48-40.mp4"
+            )),
+            "file:///home/me/Videos/Chronoclip/Chronoclip_2026-11-26_21-48-40.mp4"
+        );
+        assert_eq!(
+            file_uri(Path::new("/home/me/My Clips/æ#.mp4")),
+            "file:///home/me/My%20Clips/%C3%A6%23.mp4"
+        );
     }
 }

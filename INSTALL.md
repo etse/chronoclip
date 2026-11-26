@@ -36,7 +36,7 @@ That's it. Everything else Chronoclip needs is already part of every Linux X11 d
 | `libX11.so.6`, `libXcomposite.so.1` | `libx11-6`, `libxcomposite1` | Finding and capturing the WoW window, and the global hotkey |
 | `libGL.so.1` (GLX) | `libgl1` | Reading the window image on the GPU |
 | `libavcodec`, `libavformat`, `libavutil` | installed with `ffmpeg` | Encoding and writing video files |
-| `libpulse.so.0` | `libpulse0` (installed with PipeWire's `pipewire-pulse` or PulseAudio) | Recording sound through the PulseAudio API, which PipeWire provides |
+| `libpulse.so.0`, `libpulse-simple.so.0` | `libpulse0` (installed with PipeWire's `pipewire-pulse` or PulseAudio) | Recording sound through the PulseAudio API, which PipeWire provides, and playing the save chime |
 
 | | Mint / Ubuntu / Debian | Arch | Fedora |
 |---|---|---|---|

@@ -172,6 +172,7 @@ fn show_settings(window: &MainWindow, settings: &Settings, paths: &Paths) {
     window.set_encoder(encoder_label(settings.encoder).into());
     window.set_audio(audio_label(settings.audio).into());
     window.set_microphone(settings.microphone);
+    window.set_save_sound(settings.save_sound);
     window.set_buffer_dir(paths.contract_home(&settings.buffer_dir(paths)).into());
     window.set_output_dir(paths.contract_home(&settings.output_dir(paths)).into());
 }
@@ -198,6 +199,7 @@ fn read_settings(window: &MainWindow, paths: &Paths) -> Result<Settings, String>
         encoder,
         audio,
         microphone: window.get_microphone(),
+        save_sound: window.get_save_sound(),
         buffer_dir: dir_setting(&window.get_buffer_dir(), &paths.default_buffer_dir, paths),
         output_dir: dir_setting(&window.get_output_dir(), &paths.default_output_dir, paths),
     };

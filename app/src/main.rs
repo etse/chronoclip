@@ -8,6 +8,7 @@ mod buffer;
 mod controller;
 mod hotkey;
 mod ipc;
+mod notify;
 mod recorder;
 mod save;
 mod tray;

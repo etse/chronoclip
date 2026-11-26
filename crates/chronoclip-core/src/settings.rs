@@ -59,6 +59,8 @@ pub struct Settings {
     pub audio: AudioMode,
     /// Record the default microphone as a separate audio track.
     pub microphone: bool,
+    /// Play a chime when a clip is saved (and a different one when saving fails).
+    pub save_sound: bool,
     /// `None` means [`Paths::default_buffer_dir`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub buffer_dir: Option<PathBuf>,
@@ -76,6 +78,7 @@ impl Default for Settings {
             encoder: EncoderPreference::default(),
             audio: AudioMode::default(),
             microphone: false,
+            save_sound: true,
             buffer_dir: None,
             output_dir: None,
         }
@@ -283,6 +286,7 @@ mod tests {
             encoder: EncoderPreference::Nvenc,
             audio: AudioMode::All,
             microphone: true,
+            save_sound: false,
             buffer_dir: Some("/mnt/ssd/buffer".into()),
             output_dir: None,
         };

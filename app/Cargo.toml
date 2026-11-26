@@ -18,6 +18,8 @@ rustix.workspace = true
 slint.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+notify-rust.workspace = true
+zbus.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

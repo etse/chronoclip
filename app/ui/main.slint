@@ -82,6 +82,7 @@ export component MainWindow inherits Window {
     in-out property <string> encoder;
     in-out property <string> audio;
     in-out property <bool> microphone;
+    in-out property <bool> save-sound: true;
     in-out property <string> buffer-dir;
     in-out property <string> output-dir;
 
@@ -254,7 +255,7 @@ export component MainWindow inherits Window {
                     }
 
                     GroupBox {
-                        title: "Save hotkey";
+                        title: "Saving";
                         VerticalLayout {
                             spacing: 4px;
                             SettingField {
@@ -273,6 +274,14 @@ export component MainWindow inherits Window {
 
                             Hint {
                                 text: "Modifiers: Ctrl, Alt, Shift, Super. Keys: F1-F24, A-Z, 0-9. You can also bind the command `chronoclip save` in your desktop's keyboard settings.";
+                            }
+
+                            Switch {
+                                text: "Play a sound when a clip is saved";
+                                checked <=> root.save-sound;
+                                toggled => {
+                                    root.apply();
+                                }
                             }
                         }
                     }

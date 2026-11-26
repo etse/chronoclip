@@ -13,6 +13,7 @@ use chronoclip_core::settings::Settings;
 use chronoclip_core::{Hotkey, Paths};
 
 use crate::hotkey::GlobalHotkey;
+use crate::notify::Alerts;
 use crate::recorder::{Recorder, RecorderConfig, RecorderStatus};
 use crate::save::{self, SavedClip};
 use crate::ui::{MainWindow, Tray};
@@ -38,6 +39,9 @@ struct SaveFeedback {
     window: slint::Weak<MainWindow>,
     /// Line for the tray tooltip (shown with the next status update) about the last save.
     last_save: Arc<Mutex<Option<String>>>,
+    alerts: Arc<Alerts>,
+    /// The "play a sound when saving" setting.
+    sound: Arc<AtomicBool>,
 }
 
 impl SaveFeedback {
@@ -63,6 +67,11 @@ impl SaveFeedback {
             Err(e) => (e.clone(), format!("Save failed: {e}"), true),
         };
         *self.last_save.lock().unwrap_or_else(|e| e.into_inner()) = Some(tray_line);
+        let sound = self.sound.load(Ordering::Relaxed);
+        match result {
+            Ok(clip) => self.alerts.clip_saved(clip, sound),
+            Err(e) => self.alerts.save_failed(e, sound),
+        }
         let _ = self.window.upgrade_in_event_loop(move |w| {
             w.set_saving(false);
             w.set_save_text(text.into());
@@ -72,6 +81,8 @@ impl SaveFeedback {
 
     /// A save that didn't start (busy, not recording).
     fn refused(&self, message: String) {
+        self.alerts
+            .save_failed(&message, self.sound.load(Ordering::Relaxed));
         let _ = self.window.upgrade_in_event_loop(move |w| {
             w.set_save_text(message.into());
             w.set_save_is_error(true);
@@ -88,11 +99,18 @@ pub struct Controller {
     output_dir: Mutex<PathBuf>,
     saving: Arc<AtomicBool>,
     last_save: Arc<Mutex<Option<String>>>,
+    alerts: Arc<Alerts>,
+    save_sound: Arc<AtomicBool>,
 }
 
 impl Controller {
     pub fn new(window: slint::Weak<MainWindow>, paths: Paths) -> Self {
         let output_dir = paths.default_output_dir.clone();
+        let cache_dir = paths
+            .default_buffer_dir
+            .parent()
+            .unwrap_or(&paths.default_buffer_dir)
+            .to_owned();
         Self {
             window,
             tray: OnceLock::new(),
@@ -102,6 +120,8 @@ impl Controller {
             output_dir: Mutex::new(output_dir),
             saving: Arc::new(AtomicBool::new(false)),
             last_save: Arc::new(Mutex::new(None)),
+            alerts: Arc::new(Alerts::new(&cache_dir)),
+            save_sound: Arc::new(AtomicBool::new(true)),
         }
     }
 
@@ -121,6 +141,8 @@ impl Controller {
         SaveFeedback {
             window: self.window.clone(),
             last_save: Arc::clone(&self.last_save),
+            alerts: Arc::clone(&self.alerts),
+            sound: Arc::clone(&self.save_sound),
         }
     }
 
@@ -249,6 +271,8 @@ impl Controller {
     /// alone is applied without interrupting the recording.
     pub fn apply_settings(&self, settings: &Settings) {
         self.apply_hotkey(settings.hotkey);
+        self.save_sound
+            .store(settings.save_sound, Ordering::Relaxed);
         *self.output_dir.lock().unwrap_or_else(|e| e.into_inner()) =
             settings.output_dir(&self.paths);
 

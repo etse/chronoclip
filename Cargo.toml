@@ -20,6 +20,8 @@ ffmpeg-next = { version = "8", default-features = false, features = ["codec", "f
 gl = "0.14"
 libc = "0.2"
 libloading = "0.8"
+# 4.19 moved to zbus 6; Slint (accesskit) uses zbus 5, so stay on 4.18 to avoid two copies.
+notify-rust = "~4.18"
 rustix = { version = "1", features = ["fs"] }
 serde = { version = "1", features = ["derive"] }
 # Default features minus `renderer-femtovg`: the software renderer draws text on whole pixels
@@ -30,6 +32,7 @@ tempfile = "3"
 thiserror = "2"
 toml = "0.8"
 x11-dl = "2"
+zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

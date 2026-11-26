@@ -19,6 +19,7 @@ mod cuda;
 mod error;
 mod glx;
 mod hotkey;
+mod sound;
 mod window;
 mod xlib;
 
@@ -26,6 +27,7 @@ pub use audio::{AudioCapture, AudioSink, AudioSourceKind, AudioSourceState, Game
 pub use error::CaptureError;
 pub use glx::{CaptureStatus, X11WindowCapture};
 pub use hotkey::{HotkeyError, X11Hotkey};
+pub use sound::play_sound;
 pub use window::{WindowInfo, WindowMatcher, find_window, is_wow_executable};
 
 /// Destination for one captured frame: an `RGB0` image in CUDA device memory.

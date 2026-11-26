@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod audio;
+pub mod chime;
 pub mod clips;
 pub mod disk;
 pub mod hotkey;
