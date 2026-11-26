@@ -166,6 +166,7 @@ Up to two audio tracks, chosen in the settings: **Sound** = *Game only* (default
 |---|---|
 | A/V sync, ffplay test video with a flash and a beep every second, *Game only*, 40 s | audio 1 to 18 ms before the picture (the video is sampled at 60 Hz, so ±1 frame); one timeline correction (the start) |
 | Same, 10 min clip | 600 flashes, 600 beeps, beeps exactly 1.000 s apart in the clip (except where the test video loops); offset −40 to +19 ms, shifting only when ffplay loops its file (ffplay's own sync); two timeline corrections in 10 min (start, and 10 ms at 9:26): the USB headset's clock is within ~35 ppm |
+| Same, 46.5 min recording with a window resize at 22.5 min (virtual null sink) | clip starts at the resize (by design): 24 min, 1440 flashes and beeps, all exactly 1 s apart; offset median 0.0 ms, −30 to +10 ms; no drift (first minute −3.4 ms, last −0.7 ms); saved in 1.0 s |
 | *All sound* + microphone, window closed and reopened mid-clip | both tracks −21 to +9 ms, also after the new session; the two sessions join without the 3 s gap |
 | CPU (1280×720 @ 60 test video, 120 s) | 1.9 % of one core without sound, 3.2 % with *Game only*: sound costs ~1.2 % of one core |
 
