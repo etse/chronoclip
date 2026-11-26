@@ -9,7 +9,7 @@ Status: ✅ done · 🚧 in progress · ⬜ not started
 | M2 | Capture pipeline (X11 + NVIDIA) | ✅ |
 | M3 | Save replay: global hotkey, lossless remux to MP4 | ✅ |
 | M4 | Audio: game audio via PipeWire, optional mic track | ✅ |
-| M5 | Polish: save notification and chime, tray state, start with desktop | 🚧 |
+| M5 | Polish: save notification and chime, tray state, start with desktop | ✅ |
 | M6 | Packaging: .deb, AppImage, Flatpak, AUR | ⬜ |
 | M7 | Better-looking UI (nice to have): visual redesign, theming, icons | ⬜ |
 | M8 | Other games (long term): record any game, not just WoW: window picker, game detection, per-game clips | ⬜ |
@@ -23,9 +23,10 @@ Goal: you notice every save, even in-game; you can see at a glance whether Chron
 - [x] Desktop notification (`org.freedesktop.Notifications` via `notify-rust`, no system dependency): "Clip saved · 10:00 · 1.4 GB" with **Play** and **Show in folder** actions; save errors notify too. Cinnamon hides notifications over fullscreen windows by default, so the chime is the in-game feedback
 - [x] Tray icon shows state: red while recording, grey while waiting for WoW, warning icon on errors; tooltip unchanged
 - [x] Start with desktop: settings switch that writes/removes `~/.config/autostart/chronoclip.desktop` (`Exec=<binary> --hidden`); default off; reflects the file's actual state
-- [ ] WoW detection: already in place since M2/M4 (waits for `Wow.exe`, starts and restarts by itself); check WoW Classic if available, then tick off
+- [x] WoW detection: already in place since M2/M4 (waits for `Wow.exe`, starts and restarts by itself); verified with Retail (`_forever_`); Classic not tested
 - [x ] Docs: README (features, settings), architecture.md (notifications, chime), INSTALL.md only if dependencies change
-- [ ] Verified in-game: chime audible in WoW (borderless) on save; notification after alt-tab; tray icon colors; autostart after a re-login
+- [x] Verified in-game: chime audible in WoW (borderless) on save; notification after alt-tab; tray icon colors; autostart after a re-login
+  - Maintainer: "it seems good" (2026-11-26)
 
 Out of scope: clip library (dropped for now), trimming or editing clips, uploading or sharing, visual redesign (M7).
 

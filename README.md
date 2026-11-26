@@ -168,7 +168,7 @@ Detailed status and task checklists: [docs/roadmap.md](docs/roadmap.md).
 3. **M2, capture pipeline (X11 + NVIDIA)** ✅ XComposite window capture → GL texture → CUDA → NVENC → rolling segments
 4. **M3, save replay** ✅ X11 global hotkey → lossless remux of the last N minutes to MP4
 5. **M4, audio** ✅ game audio via PipeWire (game only or all sound), optional mic track
-6. **M5, polish**: save notification and chime, tray state, start with desktop
+6. **M5, polish** ✅ save notification and chime, tray state, start with desktop
 7. **M6, packaging**: .deb (Mint/Ubuntu), AppImage, Flatpak, AUR
 8. **M7, better-looking UI** (nice to have): visual redesign of the window and tray menu, consistent theming (light/dark), icons
 9. **M8, other games** (long term): record any game, not just WoW: pick the window to record, detect common games, name clips after the game
