@@ -6,9 +6,10 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use chronoclip_core::APP_ID;
 use chronoclip_core::chime;
 use chronoclip_core::disk::{format_duration, format_size};
-use chronoclip_core::paths::file_uri;
+use chronoclip_core::paths::{data_dirs, file_uri, find_icon};
 use notify_rust::{Hint, Notification, Timeout};
 
 use crate::save::SavedClip;
@@ -18,13 +19,19 @@ const ICON_PNG: &[u8] = include_bytes!("../ui/icons/chronoclip-256.png");
 const TIMEOUT_MS: u32 = 8_000;
 
 pub struct Alerts {
-    /// Notification icon (the app icon written to the cache folder), or a theme icon name.
+    /// Notification icon: the installed app icon, else a copy in the cache folder (AppImage,
+    /// `cargo run`), else a theme icon name.
     icon: String,
 }
 
 impl Alerts {
-    /// `cache_dir` is where the notification icon is written.
-    pub fn new(cache_dir: &Path) -> Self {
+    /// `cache_dir` is where the notification icon is written if the app isn't installed.
+    pub fn new(home: &Path, cache_dir: &Path) -> Self {
+        if let Some(installed) = find_icon(&data_dirs(home), APP_ID) {
+            return Self {
+                icon: installed.display().to_string(),
+            };
+        }
         let path = cache_dir.join("chronoclip.png");
         let current = std::fs::metadata(&path).is_ok_and(|m| m.len() == ICON_PNG.len() as u64);
         let written = current
@@ -66,6 +73,7 @@ impl Alerts {
         let mut notification = Notification::new();
         notification
             .appname(APP_NAME)
+            .hint(Hint::DesktopEntry(APP_ID.into()))
             .summary(summary)
             .body(&body)
             .icon(&self.icon)

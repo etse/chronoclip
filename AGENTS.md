@@ -48,6 +48,10 @@ Read before making non-trivial changes:
 │   ├── chronoclip-core/       # Pure logic: settings, hotkeys, segment index, paths, IPC protocol
 │   ├── chronoclip-capture/    # X11: window finding, capture (XComposite → GLX → CUDA), hotkey grab; audio (libpulse); Wayland later
 │   └── chronoclip-encode/     # FFmpeg: NVENC encoder (CUDA frames), AAC encoder, MPEG-TS segment writer, MP4 remux
+├── packaging/
+│   ├── icons/                 # make-icons.py (Pillow) → hicolor PNGs + app/ui/icons; regenerate, don't edit PNGs
+│   ├── linux/                 # io.github.etse.chronoclip.desktop + .metainfo.xml (validate with desktop-file-validate / appstreamcli)
+│   └── licenses/              # cargo-about config; generate.sh writes THIRD-PARTY-LICENSES.txt at package time
 ├── docs/
 │   ├── architecture.md
 │   └── adr/

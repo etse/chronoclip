@@ -79,6 +79,43 @@ impl Paths {
     }
 }
 
+/// Data directories in lookup order: `$XDG_DATA_HOME` (default `~/.local/share`), then
+/// `$XDG_DATA_DIRS` (default `/usr/local/share:/usr/share`).
+pub fn data_dirs(home: &Path) -> Vec<PathBuf> {
+    let env_dirs = |name: &str| {
+        std::env::var_os(name)
+            .map(|v| {
+                std::env::split_paths(&v)
+                    .filter(|p| p.is_absolute())
+                    .collect::<Vec<_>>()
+            })
+            .filter(|dirs| !dirs.is_empty())
+    };
+    let mut dirs = env_dirs("XDG_DATA_HOME").unwrap_or_else(|| vec![home.join(".local/share")]);
+    dirs.extend(
+        env_dirs("XDG_DATA_DIRS")
+            .unwrap_or_else(|| vec!["/usr/local/share".into(), "/usr/share".into()]),
+    );
+    dirs
+}
+
+/// The largest installed hicolor PNG icon named `name` in `data_dirs`, if any (e.g. the
+/// app's own icon when installed from the .deb; not inside an AppImage).
+pub fn find_icon(data_dirs: &[PathBuf], name: &str) -> Option<PathBuf> {
+    const SIZES: [&str; 6] = ["512x512", "256x256", "128x128", "64x64", "48x48", "32x32"];
+    SIZES.iter().find_map(|size| {
+        data_dirs
+            .iter()
+            .map(|dir| {
+                dir.join("icons/hicolor")
+                    .join(size)
+                    .join("apps")
+                    .join(format!("{name}.png"))
+            })
+            .find(|path| path.is_file())
+    })
+}
+
 /// `file://` URI for an absolute path, percent-encoding everything except unreserved
 /// characters and `/` (for D-Bus calls such as `org.freedesktop.FileManager1.ShowItems`).
 pub fn file_uri(path: &Path) -> String {
@@ -150,5 +187,24 @@ mod tests {
             file_uri(Path::new("/home/me/My Clips/æ#.mp4")),
             "file:///home/me/My%20Clips/%C3%A6%23.mp4"
         );
+    }
+
+    #[test]
+    fn finds_the_largest_installed_icon() -> std::io::Result<()> {
+        let tmp = tempfile::tempdir()?;
+        let (local, system) = (tmp.path().join("local"), tmp.path().join("system"));
+        let dirs = vec![local.clone(), system.clone()];
+        assert_eq!(find_icon(&dirs, "app"), None);
+        for (dir, size) in [(&system, "256x256"), (&system, "48x48"), (&local, "64x64")] {
+            let apps = dir.join("icons/hicolor").join(size).join("apps");
+            std::fs::create_dir_all(&apps)?;
+            std::fs::write(apps.join("app.png"), b"png")?;
+        }
+        assert_eq!(
+            find_icon(&dirs, "app"),
+            Some(system.join("icons/hicolor/256x256/apps/app.png"))
+        );
+        assert_eq!(find_icon(&dirs, "other"), None);
+        Ok(())
     }
 }

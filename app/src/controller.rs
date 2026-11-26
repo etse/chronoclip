@@ -111,6 +111,7 @@ impl Controller {
             .parent()
             .unwrap_or(&paths.default_buffer_dir)
             .to_owned();
+        let alerts = Arc::new(Alerts::new(&paths.home_dir, &cache_dir));
         Self {
             window,
             tray: OnceLock::new(),
@@ -120,7 +121,7 @@ impl Controller {
             output_dir: Mutex::new(output_dir),
             saving: Arc::new(AtomicBool::new(false)),
             last_save: Arc::new(Mutex::new(None)),
-            alerts: Arc::new(Alerts::new(&cache_dir)),
+            alerts,
             save_sound: Arc::new(AtomicBool::new(true)),
         }
     }

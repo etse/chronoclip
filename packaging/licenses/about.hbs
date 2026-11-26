@@ -1,0 +1,23 @@
+Third-party software in Chronoclip
+==================================
+
+The chronoclip program includes the following Rust crates. Their licenses are reproduced
+below. FFmpeg, which is shipped as separate shared libraries, is described in
+FFMPEG-LICENSE.txt.
+
+{{#each overview}}
+- {{{name}}} ({{count}} crates)
+{{/each}}
+
+{{#each licenses}}
+--------------------------------------------------------------------------------
+{{{name}}}
+
+Used by:
+{{#each used_by}}
+  {{crate.name}} {{crate.version}}
+{{/each}}
+
+{{{text}}}
+
+{{/each}}

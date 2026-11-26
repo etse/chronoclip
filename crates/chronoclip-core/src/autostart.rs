@@ -4,6 +4,8 @@
 use std::io;
 use std::path::Path;
 
+use crate::APP_ID;
+
 /// Marks entries written by Chronoclip, so we only ever rewrite our own file.
 const MARKER: &str = "X-Chronoclip-Autostart=true";
 
@@ -15,7 +17,7 @@ pub fn desktop_entry(exe: &Path) -> String {
          Name=Chronoclip\n\
          Comment=Replay buffer for World of Warcraft\n\
          Exec={} --hidden\n\
-         Icon=media-record\n\
+         Icon={APP_ID}\n\
          Terminal=false\n\
          X-GNOME-Autostart-enabled=true\n\
          {MARKER}\n",

@@ -5,6 +5,9 @@
 
 #![forbid(unsafe_code)]
 
+/// Application ID: desktop entry, icon and AppStream metadata names (`packaging/linux/`).
+pub const APP_ID: &str = "io.github.etse.chronoclip";
+
 pub mod audio;
 pub mod autostart;
 pub mod chime;

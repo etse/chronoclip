@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.etse.chronoclip</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Chronoclip</name>
+  <summary>Replay buffer for World of Warcraft on Linux</summary>
+  <developer id="io.github.etse">
+    <name>Chronoclip contributors</name>
+  </developer>
+  <description>
+    <p>
+      Chronoclip keeps the last minutes of your World of Warcraft gameplay in a rolling
+      buffer and saves them as a video when you press a hotkey, like NVIDIA ShadowPlay's
+      Instant Replay, but native to Linux.
+    </p>
+    <ul>
+      <li>Always-on replay buffer of 5 to 45 minutes, oldest footage deleted automatically</li>
+      <li>Save with a global hotkey (Ctrl+F9 by default), the tray menu or the command line</li>
+      <li>Saving takes seconds: the video is copied, not re-encoded</li>
+      <li>GPU encoding with NVIDIA NVENC; the game keeps running smoothly</li>
+      <li>Only the game's own sound by default, optional microphone track</li>
+      <li>A chime and a notification tell you when a clip is saved</li>
+    </ul>
+    <p>
+      Chronoclip only records what your desktop shows through official X11 and sound server
+      interfaces. It never touches the game process and sends nothing over the network.
+      It currently needs an X11 session and an NVIDIA GPU.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.etse.chronoclip.desktop</launchable>
+  <url type="homepage">https://github.com/etse/chronoclip</url>
+  <url type="bugtracker">https://github.com/etse/chronoclip/issues</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Recording status and settings</caption>
+      <image>https://raw.githubusercontent.com/etse/chronoclip/main/docs/images/chronoclip-window.png</image>
+    </screenshot>
+  </screenshots>
+  <provides>
+    <binary>chronoclip</binary>
+  </provides>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Video</category>
+  </categories>
+  <keywords>
+    <keyword>replay</keyword>
+    <keyword>recorder</keyword>
+    <keyword>World of Warcraft</keyword>
+  </keywords>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-11-26">
+      <description>
+        <p>First release: replay buffer, hotkey saves, game and microphone audio, notifications.</p>
+      </description>
+    </release>
+  </releases>
+</component>

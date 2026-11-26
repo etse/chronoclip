@@ -93,4 +93,14 @@ cargo test --workspace -- --ignored
 
 The hotkey test briefly grabs `Ctrl+Shift+Super+F10` and `F11`; it fails if another program already uses them.
 
+### 5. Optional: packaging tools
+
+Only needed to change icons, check the app metadata or build the license file that ships with packages:
+
+| Tool | Install (Mint / Ubuntu) | Used for |
+|---|---|---|
+| Pillow | `sudo apt install python3-pil` | `python3 packaging/icons/make-icons.py` renders all icon sizes |
+| `desktop-file-validate`, `appstreamcli` | `sudo apt install desktop-file-utils appstream` | Checking `packaging/linux/*.desktop` and `*.metainfo.xml` |
+| cargo-about | `cargo install cargo-about --locked --features cli` | `packaging/licenses/generate.sh` writes `THIRD-PARTY-LICENSES.txt` |
+
 See [AGENTS.md](AGENTS.md#commands) for test, lint and other commands.

@@ -21,8 +21,9 @@ Goal: Ubuntu and Linux Mint users install Chronoclip from a **.deb**, everyone e
 
 Both packages carry the same **LGPL FFmpeg** (built by us, shared libraries): the distros' FFmpeg differs in version between releases (Ubuntu 24.04 has 6.1, 26.04 newer), and Ubuntu's is a GPL build (`--enable-gpl --enable-libx264`) that we may not ship (AGENTS rule 7). With our own FFmpeg in `/usr/lib/chronoclip/`, **one .deb works on Ubuntu 22.04 / 24.04 / 26.04 and Mint 21 / 22 / 23**. X11, OpenGL, CUDA/NVENC (NVIDIA driver) and PulseAudio still come from the host.
 
-- [ ] Groundwork: app-menu entry (`chronoclip.desktop`), hicolor icons (16–512 px), AppStream metainfo, `chronoclip --version`; notifications and autostart use the installed icon
+- [x] Groundwork: app-menu entry (`chronoclip.desktop`), hicolor icons (16–512 px), AppStream metainfo, `chronoclip --version`; notifications and autostart use the installed icon
 - [ ] License files for binaries: third-party Rust licenses (`cargo-about`), FFmpeg's LGPL text, its exact source and build configuration, Slint attribution (already in About)
+  - Done: Rust crates (`packaging/licenses/generate.sh`, incl. the Slint royalty-free text that cargo-about 0.9 can't include). FFmpeg's part comes with the FFmpeg build
 - [ ] LGPL FFmpeg build script (`packaging/ffmpeg/`): a fixed FFmpeg release, shared libs, no GPL/nonfree parts, only what Chronoclip uses (`h264_nvenc` + CUDA via `nv-codec-headers`, `aac`, mpegts/mp4 muxing and demuxing); the app is compiled against it
 - [ ] Build environment: everything built in an Ubuntu 22.04 container (oldest glibc we support), in CI; locally only with the maintainer's OK (Docker needs sudo)
 - [ ] .deb: `cargo-deb`, binary in `/usr/bin`, FFmpeg in `/usr/lib/chronoclip/` (rpath), desktop entry, icons, metainfo, licenses; depends on the X11/GL/PulseAudio/fontconfig/xkbcommon runtime packages, recommends the NVIDIA driver; installs and removes cleanly with apt
