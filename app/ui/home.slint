@@ -156,6 +156,11 @@ export component HomePage {
     in property <string> last-clip-detail;
     callback save-replay();
     callback choose-window();
+    // "Record this game?" ("" = nothing to ask).
+    in property <string> suggestion-name;
+    in property <string> suggestion-detail;
+    callback accept-suggestion();
+    callback dismiss-suggestion();
     callback play-last-clip();
     callback show-last-clip();
 
@@ -229,6 +234,67 @@ export component HomePage {
                     ProgressBar {
                         value: root.buffer-fraction;
                         fill: root.state == RecState.recording ? Theme.accent : Theme.border-strong;
+                    }
+                }
+            }
+        }
+
+        if root.suggestion-name != "": Rectangle {
+            border-radius: Theme.radius-large;
+            background: Theme.accent-soft;
+            border-width: 1px;
+            border-color: Theme.accent.with-alpha(0.5);
+            HorizontalLayout {
+                padding: Theme.space-l;
+                spacing: Theme.space-l;
+                VerticalLayout {
+                    alignment: center;
+                    Icon {
+                        source: @image-url("icons/lucide/gamepad-2.svg");
+                        color: Theme.accent;
+                        size: 22px;
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: "Record " + root.suggestion-name + "?";
+                        color: Theme.text;
+                        font-size: Theme.font-body;
+                        font-weight: 700;
+                        overflow: elide;
+                    }
+
+                    Text {
+                        text: "It looks like a game" + (root.suggestion-detail != "" ? " (" + root.suggestion-detail + ")" : "") + ", but Chronoclip doesn't know it yet.";
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                        wrap: word-wrap;
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    Button {
+                        text: "Record";
+                        kind: ButtonKind.primary;
+                        clicked => {
+                            root.accept-suggestion();
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    Button {
+                        text: "Not this one";
+                        kind: ButtonKind.ghost;
+                        clicked => {
+                            root.dismiss-suggestion();
+                        }
                     }
                 }
             }

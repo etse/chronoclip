@@ -55,6 +55,9 @@ with `CHRONOCLIP_BIN=target/stage/usr/bin/chronoclip $T start …` (see the bund
 
 - Check `$T status` / `pgrep -ax chronoclip` before and after: other instances are left alone,
   but say so in your report if the maintainer's instance is running.
+- A test window **without its own sound stream** (glxgears, an `ffplay -an`, a renamed SDL
+  program) makes *Game only* fall back to *All sound*, i.e. the maintainer's speakers. Start
+  such instances with `--set 'audio = "off"'`, or use `$T player`, which plays silence.
 - *All sound* mode records the default output's monitor, i.e. whatever the maintainer is
   listening to (YouTube, Discord). Prefer *Game only* with `$T player`; if you must test *All
   sound*, say so first.

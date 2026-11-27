@@ -29,7 +29,7 @@ pub struct OpenWindow {
 }
 
 /// Windows smaller than this (either side) are no games, e.g. hidden helper windows.
-const MIN_GAME_SIZE: i32 = 64;
+const MIN_GAME_SIZE: u32 = 64;
 
 /// Top-level application windows in the window manager's client list, without desktop
 /// backgrounds, panels, tiny and untitled windows.
@@ -47,10 +47,7 @@ pub fn list_windows() -> Result<Vec<OpenWindow>, CaptureError> {
                 .iter()
                 .any(|t| skip_types.contains(t))
         })
-        .filter(|w| {
-            conn.window_attributes(w.id)
-                .is_ok_and(|a| a.width >= MIN_GAME_SIZE && a.height >= MIN_GAME_SIZE)
-        })
+        .filter(|w| w.facts.size.0 >= MIN_GAME_SIZE && w.facts.size.1 >= MIN_GAME_SIZE)
         .collect())
 }
 
@@ -94,9 +91,10 @@ pub fn find_window(
 
 /// The window manager's top-level windows with title, WM_CLASS and process names.
 fn client_windows(conn: &XConnection) -> impl Iterator<Item = OpenWindow> + '_ {
+    let fullscreen_atom = conn.atom("_NET_WM_STATE_FULLSCREEN");
     conn.property_longs(conn.root(), "_NET_CLIENT_LIST", xlib::XA_WINDOW)
         .into_iter()
-        .map(|window| {
+        .map(move |window| {
             let title = conn
                 .property_string(window, "_NET_WM_NAME")
                 .or_else(|| conn.property_string(window, "WM_NAME"))
@@ -116,6 +114,17 @@ fn client_windows(conn: &XConnection) -> impl Iterator<Item = OpenWindow> + '_ {
                         .unwrap_or_default(),
                     process_names: pid.map(process_names).unwrap_or_default(),
                     env: pid.map(launcher_env).unwrap_or_default(),
+                    bypass_compositor: conn
+                        .property_longs(window, "_NET_WM_BYPASS_COMPOSITOR", xlib::XA_CARDINAL)
+                        .first()
+                        .and_then(|&v| u32::try_from(v).ok()),
+                    fullscreen: conn
+                        .property_longs(window, "_NET_WM_STATE", xlib::XA_ATOM)
+                        .contains(&fullscreen_atom),
+                    size: conn
+                        .window_attributes(window)
+                        .map(|a| (a.width.max(0) as u32, a.height.max(0) as u32))
+                        .unwrap_or_default(),
                 },
             }
         })

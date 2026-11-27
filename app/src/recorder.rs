@@ -23,10 +23,12 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use chronoclip_capture::{
-    AudioSourceKind, CaptureError, CaptureStatus, CudaDestination, GameWindow, X11WindowCapture,
-    find_window,
+    AudioSourceKind, CaptureError, CaptureStatus, CudaDestination, GameWindow, OpenWindow,
+    X11WindowCapture, find_window, list_windows,
 };
+use chronoclip_core::detect::looks_like_game;
 use chronoclip_core::disk::bitrate_bps;
+use chronoclip_core::games::find_game;
 use chronoclip_core::segments::{clean_buffer_dir, retention_for_minutes};
 use chronoclip_core::settings::EncoderPreference;
 use chronoclip_core::{AudioMode, Game};
@@ -100,6 +102,24 @@ pub enum RecorderStatus {
 
 type StatusFn = dyn Fn(RecorderStatus) + Send + Sync;
 
+/// State the recorder shares with the controller; it survives recorder restarts.
+#[derive(Default)]
+pub struct Shared {
+    /// The games to look for, in priority order. Can change without a restart; a session
+    /// ends when its game is no longer in the list.
+    pub games: Mutex<Vec<Game>>,
+    /// The window to stay with: preferred when looking for a game, set to the window being
+    /// recorded, cleared when no game window is open. The window picker points it elsewhere.
+    pub current: Mutex<Option<u64>>,
+    /// While no game is recorded: open windows that look like games but aren't in any list
+    /// (for "Record this game?").
+    pub candidates: Mutex<Vec<OpenWindow>>,
+}
+
+fn locked<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Running recorder. Dropping it stops recording and deletes the buffer.
 pub struct Recorder {
     stop: Arc<AtomicBool>,
@@ -112,13 +132,11 @@ impl Recorder {
     /// `current` is the window to stay with: the recorder prefers it when looking for a game
     /// and sets it to the window it records (cleared when no game window is open). Shared, so
     /// it survives restarts and the window picker can point it elsewhere.
-    /// `games` is the list of games to look for, in priority order; shared, so it can change
-    /// (a game added, removed, newly installed) without restarting the recorder. A session ends
-    /// when its game is no longer in the list.
+    /// `shared` holds the games list, the window to stay with and the candidates for "Record
+    /// this game?" (see [`Shared`]).
     pub fn start(
         config: RecorderConfig,
-        games: Arc<Mutex<Vec<Game>>>,
-        current: Arc<Mutex<Option<u64>>>,
+        shared: Arc<Shared>,
         on_status: impl Fn(RecorderStatus) + Send + Sync + 'static,
     ) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
@@ -132,17 +150,7 @@ impl Recorder {
             let on_status: Arc<StatusFn> = Arc::new(on_status);
             thread::Builder::new()
                 .name("recorder".into())
-                .spawn(move || {
-                    run(
-                        config,
-                        &games,
-                        &current,
-                        &stop,
-                        retention_secs,
-                        &buffer,
-                        on_status,
-                    )
-                })
+                .spawn(move || run(config, &shared, &stop, retention_secs, &buffer, on_status))
         };
         let thread = thread
             .inspect_err(|e| tracing::error!("could not start recorder thread: {e}"))
@@ -220,8 +228,7 @@ unsafe impl Send for SendMessage {}
 
 fn run(
     config: RecorderConfig,
-    games: &Mutex<Vec<Game>>,
-    current: &Mutex<Option<u64>>,
+    shared: &Shared,
     stop: &AtomicBool,
     retention_secs: Arc<AtomicU64>,
     buffer: &Arc<ReplayBuffer>,
@@ -297,13 +304,14 @@ fn run(
     let mut last_game: Option<Option<u32>> = None;
     let mut window_gone = false;
     while !stop.load(Ordering::Relaxed) {
-        let prefer = *current.lock().unwrap_or_else(|e| e.into_inner());
-        let list = games.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let prefer = *locked(&shared.current);
+        let list = locked(&shared.games).clone();
         let window = match find_window(&list, prefer) {
             Ok(Some(w)) if w.viewable => w,
             Ok(found) => {
                 if found.is_none() {
-                    *current.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                    *locked(&shared.current) = None;
+                    *locked(&shared.candidates) = unknown_games(&list);
                     if last_game.is_some() {
                         window_gone = true;
                     }
@@ -344,7 +352,8 @@ fn run(
                 game: window.game.clone(),
             }));
         }
-        *current.lock().unwrap_or_else(|e| e.into_inner()) = Some(window.id);
+        *locked(&shared.current) = Some(window.id);
+        locked(&shared.candidates).clear();
         session_id += 1;
         let game = window.game.name.clone();
         let result = record_window(
@@ -364,7 +373,7 @@ fn run(
             },
             buffer,
             &retention_secs,
-            games,
+            &shared.games,
             on_status.as_ref(),
         );
         // Close the open segment so it can be saved while no window is recorded.
@@ -394,6 +403,18 @@ fn run(
         Err(e) => tracing::warn!("could not clean buffer folder: {e}"),
     }
     on_status(RecorderStatus::Stopped);
+}
+
+/// Open windows that look like games (`detect::looks_like_game`) but match none of `games`;
+/// not Chronoclip's own window.
+fn unknown_games(games: &[Game]) -> Vec<OpenWindow> {
+    let own_pid = std::process::id();
+    list_windows()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|w| w.pid != Some(own_pid))
+        .filter(|w| looks_like_game(&w.facts) && find_game(games, &w.facts).is_none())
+        .collect()
 }
 
 /// Start the audio tracks the settings ask for. A track that can't start is left out (and

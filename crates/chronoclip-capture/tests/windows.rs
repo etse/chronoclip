@@ -13,7 +13,8 @@ fn lists_open_windows() -> Result<(), Box<dyn std::error::Error>> {
     for w in &windows {
         let game = chronoclip_core::Game::from_window(&w.facts, launchers.name_for(&w.facts));
         eprintln!(
-            "{:?} {:?} → {:?} [{}]",
+            "score {} {:?} {:?} → {:?} [{}]",
+            chronoclip_core::detect::game_score(&w.facts),
             w.facts.title,
             w.facts.class,
             game.name,

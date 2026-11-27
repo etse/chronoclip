@@ -242,41 +242,83 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
             window.set_picker_open(true);
         }
     });
-    window.on_pick_window({
+    // Record a window the user chose (picker or "Record this game?"): add its game unless a
+    // list already has it, prefer it over the game being recorded, and watch the first try.
+    let record_chosen = {
         let weak = window.as_weak();
         let paths = Rc::clone(&paths);
         let current = Rc::clone(&current);
         let commit = Rc::clone(&commit);
-        move |index| {
+        let controller = Arc::clone(&trial_controller);
+        move |picked: OpenWindow| {
             let Some(window) = weak.upgrade() else { return };
-            let picked = usize::try_from(index)
-                .ok()
-                .and_then(|i| picker_windows.borrow().get(i).cloned());
-            let Some(picked) = picked else { return };
             let mut settings = current.borrow().clone();
-            let installed = installed_games(&trial_controller);
+            let installed = installed_games(&controller);
             // A window one of your games already matches is just recorded, not added again.
-            // (One you switched off isn't in that list: picking it switches it on again.)
+            // (One you switched off isn't in that list: choosing it switches it on again.)
             let known =
                 find_game(&settings.all_games(&installed), &picked.facts).map(|g| g.name.clone());
             let name = known.unwrap_or_else(|| {
                 let launcher_name = load_launchers(&paths).name_for(&picked.facts);
                 settings.add_game(Game::from_window(&picked.facts, launcher_name), &installed)
             });
-            tracing::info!(game = %name, title = %picked.facts.title, "window picked");
+            tracing::info!(game = %name, title = %picked.facts.title, "window chosen");
             window.set_picker_open(false);
-            // The picked window wins over the game being recorded (user override).
-            let switch = trial_controller.prefer_window(picked.id);
+            // The chosen window wins over the game being recorded (user override).
+            let switch = controller.prefer_window(picked.id);
             if settings == *current.borrow() {
                 if switch {
-                    trial_controller.restart_recorder();
+                    controller.restart_recorder();
                 }
                 set_message(&window, &format!("Recording {name}."), false);
             } else {
                 // Kept only if it can be recorded (see on_game_failed).
-                trial_controller.try_game(&name);
+                controller.try_game(&name);
                 commit(settings, &format!("Added {name} to your games."));
             }
+        }
+    };
+    let record_chosen = Rc::new(record_chosen);
+    window.on_pick_window({
+        let record_chosen = Rc::clone(&record_chosen);
+        move |index| {
+            let picked = usize::try_from(index)
+                .ok()
+                .and_then(|i| picker_windows.borrow().get(i).cloned());
+            if let Some(picked) = picked {
+                record_chosen(picked);
+            }
+        }
+    });
+    // "Record this game?" on Home or in the notification.
+    window.on_accept_suggestion({
+        let record_chosen = Rc::clone(&record_chosen);
+        let controller = Arc::clone(&trial_controller);
+        move || {
+            if let Some(window) = controller.take_suggestion() {
+                record_chosen(window);
+            }
+        }
+    });
+    window.on_dismiss_suggestion({
+        let paths = Rc::clone(&paths);
+        let current = Rc::clone(&current);
+        let commit = Rc::clone(&commit);
+        let controller = Arc::clone(&trial_controller);
+        move || {
+            let Some(window) = controller.take_suggestion() else {
+                return;
+            };
+            let launcher_name = load_launchers(&paths).name_for(&window.facts);
+            let game = Game::from_window(&window.facts, launcher_name);
+            tracing::info!(game = %game.name, "not a game: won't ask again");
+            let mut settings = current.borrow().clone();
+            let name = game.name.clone();
+            settings.never_record.push(game);
+            commit(
+                settings,
+                &format!("{name} won't be recorded. Undo it on the Games tab (Not recorded)."),
+            );
         }
     });
     window.on_game_failed({

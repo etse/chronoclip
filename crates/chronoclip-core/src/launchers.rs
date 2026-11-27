@@ -345,6 +345,7 @@ mod tests {
             class: class.iter().map(|&s| s.into()).collect(),
             process_names: process.iter().map(|&s| s.into()).collect(),
             env: env.iter().map(|&(k, v)| (k.into(), v.into())).collect(),
+            ..WindowFacts::default()
         }
     }
 

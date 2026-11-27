@@ -12,6 +12,7 @@ pub mod audio;
 pub mod autostart;
 pub mod chime;
 pub mod clips;
+pub mod detect;
 pub mod disk;
 pub mod games;
 pub mod hotkey;

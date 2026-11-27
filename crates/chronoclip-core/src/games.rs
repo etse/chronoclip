@@ -278,6 +278,13 @@ pub struct WindowFacts {
     pub process_names: Vec<String>,
     /// The owning process's launcher variables ([`crate::launchers::ENV_KEYS`] only).
     pub env: Vec<(String, String)>,
+    /// `_NET_WM_BYPASS_COMPOSITOR`: 1 = "don't composite me" (games, SDL's default),
+    /// 2 = "please composite me" (browsers, Electron apps).
+    pub bypass_compositor: Option<u32>,
+    /// `_NET_WM_STATE_FULLSCREEN` is set.
+    pub fullscreen: bool,
+    /// Width and height in pixels.
+    pub size: (u32, u32),
 }
 
 impl WindowFacts {
@@ -338,7 +345,7 @@ mod tests {
             title: title.into(),
             class: class.iter().map(|&s| s.into()).collect(),
             process_names: process.iter().map(|&s| s.into()).collect(),
-            env: Vec::new(),
+            ..WindowFacts::default()
         }
     }
 

@@ -68,6 +68,40 @@ impl Alerts {
         self.notify("Clip not saved", message.to_owned(), None);
     }
 
+    /// "Looks like a game: X. Record it?" with Record / Not this one. `on_action` gets
+    /// "record", "ignore" or "default" (the notification was clicked), on another thread.
+    pub fn game_suggested(&self, name: &str, on_action: impl FnOnce(&str) + Send + 'static) {
+        let mut notification = Notification::new();
+        notification
+            .appname(APP_NAME)
+            .hint(Hint::DesktopEntry(APP_ID.into()))
+            .summary(&format!("Record {name}?"))
+            .body("It looks like a game, but Chronoclip doesn't know it yet.")
+            .icon(&self.icon)
+            .timeout(Timeout::Milliseconds(TIMEOUT_MS * 2))
+            .action("record", "Record")
+            .action("ignore", "Not this one");
+        let spawned = std::thread::Builder::new()
+            .name("notification".into())
+            .spawn(move || match notification.show() {
+                // Returns when a button is clicked or the notification closes or expires.
+                Ok(handle) => {
+                    let mut on_action = Some(on_action);
+                    handle.wait_for_action(|action| {
+                        if let Some(f) = on_action.take()
+                            && action != "__closed"
+                        {
+                            f(action);
+                        }
+                    });
+                }
+                Err(e) => tracing::debug!("could not show a notification: {e}"),
+            });
+        if let Err(e) = spawned {
+            tracing::debug!("could not start notification thread: {e}");
+        }
+    }
+
     /// Show a notification on its own thread; with a clip, offer Play and Show in folder.
     fn notify(&self, summary: &str, body: String, clip: Option<PathBuf>) {
         let mut notification = Notification::new();

@@ -2,10 +2,12 @@
 //!
 //! Lives on any thread; touches the UI only through `upgrade_in_event_loop`.
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, mpsc};
 
+use chronoclip_capture::OpenWindow;
 use chronoclip_core::Game;
 use chronoclip_core::disk::{format_duration, format_size};
 use chronoclip_core::installed::{InstalledGame, find_installed};
@@ -17,7 +19,7 @@ use chronoclip_core::{Hotkey, Paths};
 
 use crate::hotkey::GlobalHotkey;
 use crate::notify::Alerts;
-use crate::recorder::{Recorder, RecorderConfig, RecorderStatus};
+use crate::recorder::{Recorder, RecorderConfig, RecorderStatus, Shared};
 use crate::save::{self, SavedClip};
 use crate::ui::{MainWindow, RecState, Tray, TrayState};
 
@@ -124,16 +126,17 @@ pub struct Controller {
     /// A game just picked in the window picker: kept if it starts recording, removed again
     /// (through the window's `game-failed`) if recording it fails first.
     trial: Arc<Mutex<Option<String>>>,
-    /// The window being recorded (or picked to be): the recorder stays with it until it
-    /// closes, also across restarts for changed settings. See [`Recorder::start`].
-    current_window: Arc<Mutex<Option<u64>>>,
-    /// The games the recorder looks for (yours, installed, built in), shared with it so the
-    /// list can change without a restart.
-    games: Arc<Mutex<Vec<Game>>>,
+    /// Shared with the recorder (across restarts): the games to look for (yours, installed,
+    /// built in), the window being recorded or picked, and windows that look like games.
+    shared: Arc<Shared>,
     /// Games installed on this computer; `None` until the first scan.
     installed: Mutex<Option<Vec<InstalledGame>>>,
-    /// The settings last applied (for rebuilding `games` after a new scan).
-    settings: Mutex<Option<Settings>>,
+    /// The settings last applied (for rebuilding the games list after a new scan, and the
+    /// "Not recorded" list for suggestions).
+    settings: Arc<Mutex<Option<Settings>>>,
+    /// The window "Record this game?" asks about, and the windows already notified about.
+    suggestion: Arc<Mutex<Option<OpenWindow>>>,
+    notified: Arc<Mutex<HashSet<u64>>>,
     /// For the waiting text: the names of your and the installed games.
     waiting_for: Arc<Mutex<String>>,
 }
@@ -160,10 +163,11 @@ impl Controller {
             alerts,
             save_sound: Arc::new(AtomicBool::new(true)),
             trial: Arc::new(Mutex::new(None)),
-            current_window: Arc::new(Mutex::new(None)),
-            games: Arc::new(Mutex::new(Vec::new())),
+            shared: Arc::new(Shared::default()),
             installed: Mutex::new(None),
-            settings: Mutex::new(None),
+            settings: Arc::new(Mutex::new(None)),
+            suggestion: Arc::new(Mutex::new(None)),
+            notified: Arc::new(Mutex::new(HashSet::new())),
             waiting_for: Arc::new(Mutex::new(String::new())),
         }
     }
@@ -179,7 +183,8 @@ impl Controller {
     /// through [`Self::apply_settings`] if the settings change too, else [`Self::restart_recorder`].
     pub fn prefer_window(&self, id: u64) -> bool {
         let mut current = self
-            .current_window
+            .shared
+            .current
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let changed = *current != Some(id);
@@ -190,9 +195,23 @@ impl Controller {
     /// The window being recorded (or about to be).
     pub fn current_window(&self) -> Option<u64> {
         *self
-            .current_window
+            .shared
+            .current
             .lock()
             .unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Take the window "Record this game?" asks about (the user answered).
+    pub fn take_suggestion(&self) -> Option<OpenWindow> {
+        let taken = self
+            .suggestion
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        let _ = self
+            .window
+            .upgrade_in_event_loop(|w| w.set_suggestion_name("".into()));
+        taken
     }
 
     /// Restart the recorder with the same settings (drops the buffer: a clip never mixes two
@@ -468,7 +487,7 @@ impl Controller {
             }
         };
         *self.waiting_for.lock().unwrap_or_else(|e| e.into_inner()) = waiting_for(&names);
-        *self.games.lock().unwrap_or_else(|e| e.into_inner()) = games;
+        *self.shared.games.lock().unwrap_or_else(|e| e.into_inner()) = games;
     }
 
     fn start_recorder(&self, slot: &mut RecorderSlot, config: RecorderConfig) {
@@ -477,14 +496,21 @@ impl Controller {
         let waiting_for = Arc::clone(&self.waiting_for);
         let last_save = Arc::clone(&self.last_save);
         let trial = Arc::clone(&self.trial);
-        let current = Arc::clone(&self.current_window);
-        let games = Arc::clone(&self.games);
+        let suggest = Suggest {
+            shared: Arc::clone(&self.shared),
+            settings: Arc::clone(&self.settings),
+            suggestion: Arc::clone(&self.suggestion),
+            notified: Arc::clone(&self.notified),
+            window: self.window.clone(),
+            alerts: Arc::clone(&self.alerts),
+            home: self.paths.home_dir.clone(),
+        };
         slot.recorder = Some(Recorder::start(
             config.clone(),
-            games,
-            current,
+            Arc::clone(&self.shared),
             move |status| {
                 check_trial(&trial, &status, &window);
+                suggest.update(&status);
                 let waiting_for = waiting_for
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
@@ -541,6 +567,83 @@ struct StatusView {
     fraction: f32,
     buffer_label: String,
     buffer_size: String,
+}
+
+/// "Record this game?": shows the first window that looks like a game but is in no list
+/// (and not on the "Not recorded" list) on Home, and notifies once per window.
+struct Suggest {
+    shared: Arc<Shared>,
+    settings: Arc<Mutex<Option<Settings>>>,
+    suggestion: Arc<Mutex<Option<OpenWindow>>>,
+    notified: Arc<Mutex<HashSet<u64>>>,
+    window: slint::Weak<MainWindow>,
+    alerts: Arc<Alerts>,
+    home: PathBuf,
+}
+
+impl Suggest {
+    fn update(&self, status: &RecorderStatus) {
+        let candidate = match status {
+            RecorderStatus::WaitingForWindow => {
+                let settings = self
+                    .settings
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone();
+                self.shared
+                    .candidates
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .iter()
+                    .find(|w| {
+                        let game = Game::from_window(&w.facts, None);
+                        !settings
+                            .as_ref()
+                            .is_some_and(|s| s.is_never_recorded(&game))
+                    })
+                    .cloned()
+            }
+            _ => None,
+        };
+        let mut current = self.suggestion.lock().unwrap_or_else(|e| e.into_inner());
+        if current.as_ref().map(|w| w.id) == candidate.as_ref().map(|w| w.id) {
+            return;
+        }
+        current.clone_from(&candidate);
+        drop(current);
+        let Some(candidate) = candidate else {
+            let _ = self
+                .window
+                .upgrade_in_event_loop(|w| w.set_suggestion_name("".into()));
+            return;
+        };
+        let home = &self.home;
+        let launchers = Launchers::load(home, &data_home(home), &config_home(home));
+        let name = Game::from_window(&candidate.facts, launchers.name_for(&candidate.facts)).name;
+        let program = candidate.facts.executable().unwrap_or_default();
+        tracing::info!(game = %name, %program, "looks like a game: asking whether to record it");
+        let (shown, detail) = (name.clone(), program);
+        let _ = self.window.upgrade_in_event_loop(move |w| {
+            w.set_suggestion_detail(detail.into());
+            w.set_suggestion_name(shown.into());
+        });
+        let first_time = self
+            .notified
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(candidate.id);
+        if first_time {
+            let window = self.window.clone();
+            self.alerts.game_suggested(&name, move |action| {
+                let action = action.to_owned();
+                let _ = window.upgrade_in_event_loop(move |w| match action.as_str() {
+                    "record" | "default" => w.invoke_accept_suggestion(),
+                    "ignore" => w.invoke_dismiss_suggestion(),
+                    _ => {}
+                });
+            });
+        }
+    }
 }
 
 /// Resolve a trial (see [`Controller::try_game`]): recording the game ends it; a failure

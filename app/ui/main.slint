@@ -63,6 +63,11 @@ export component MainWindow inherits Window {
     callback search-windows(string);
     // A tab was opened (the Games tab looks for installed games again).
     callback tab-opened(int);
+    // "Record this game?": a window that looks like a game but is in no list ("" = none).
+    in property <string> suggestion-name;
+    in property <string> suggestion-detail;
+    callback accept-suggestion();
+    callback dismiss-suggestion();
     // A game just picked can't be recorded: Rust removes it again.
     callback game-failed(string, string);
     callback close-window();
@@ -156,6 +161,14 @@ export component MainWindow inherits Window {
             }
             choose-window => {
                 root.choose-window();
+            }
+            suggestion-name: root.suggestion-name;
+            suggestion-detail: root.suggestion-detail;
+            accept-suggestion => {
+                root.accept-suggestion();
+            }
+            dismiss-suggestion => {
+                root.dismiss-suggestion();
             }
             play-last-clip => {
                 root.play-last-clip();
