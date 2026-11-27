@@ -4,6 +4,7 @@
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Button, ButtonKind, Card, Icon } from "components.slint";
+import { SearchField } from "controls.slint";
 
 /// One game in the games list.
 export struct GameRow {
@@ -121,6 +122,9 @@ export component GamesPage {
     in property <string> message;
     in property <bool> message-is-error;
     callback add-game();
+    // Search text changed: Rust filters the sections.
+    in-out property <string> query;
+    callback search(string);
     // The button of row `index` in a section: 0 yours, 1 installed, 2 not recorded, 3 built in.
     callback game-action(int, int);
 
@@ -167,6 +171,14 @@ export component GamesPage {
                     }
                 }
 
+                SearchField {
+                    text <=> root.query;
+                    placeholder: "Search games, programs or Steam ids";
+                    edited(text) => {
+                        root.search(text);
+                    }
+                }
+
                 if root.message != "": Text {
                     text: root.message;
                     color: root.message-is-error ? Theme.danger : Theme.text-muted;
@@ -174,7 +186,14 @@ export component GamesPage {
                     wrap: word-wrap;
                 }
 
-                GroupTitle {
+                if root.query != "" && root.games.length + root.installed-games.length + root.ignored-games.length + root.builtin-games.length == 0: Text {
+                    text: "No games match “" + root.query + "”.";
+                    color: Theme.text-faint;
+                    font-size: Theme.font-body;
+                    wrap: word-wrap;
+                }
+
+                if root.query == "" || root.games.length > 0: GroupTitle {
                     text: "YOUR GAMES";
                 }
 
@@ -185,14 +204,14 @@ export component GamesPage {
                     }
                 }
 
-                if root.games.length == 0: Text {
+                if root.query == "" && root.games.length == 0: Text {
                     text: "None yet. Start a game that isn't built in, then add its window here or with Choose window on Home.";
                     color: Theme.text-faint;
                     font-size: Theme.font-small;
                     wrap: word-wrap;
                 }
 
-                GroupTitle {
+                if root.query == "" || root.installed-games.length > 0: GroupTitle {
                     text: "INSTALLED ON THIS COMPUTER (" + root.installed-games.length + ")";
                 }
 
@@ -203,7 +222,7 @@ export component GamesPage {
                     }
                 }
 
-                if root.installed-games.length == 0: Text {
+                if root.query == "" && root.installed-games.length == 0: Text {
                     text: "No Steam games or known games in Wine prefixes found.";
                     color: Theme.text-faint;
                     font-size: Theme.font-small;

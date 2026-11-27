@@ -2,7 +2,7 @@
 // dropdown, text field and hotkey recorder. All are keyboard-operable with a visible focus ring.
 
 import { Theme } from "theme.slint";
-import { Icon } from "components.slint";
+import { Icon, IconButton } from "components.slint";
 
 /// Focus ring drawn around a control when it has keyboard focus.
 component FocusRing inherits Rectangle {
@@ -622,5 +622,106 @@ export component HotkeyField {
         width: parent.width + 6px;
         height: parent.height + 6px;
         visible-ring: focus.has-focus && focus.keyboard && !root.recording;
+    }
+}
+
+/// Search box: filters as you type (`edited`), with a clear button; Esc clears it.
+export component SearchField {
+    in-out property <string> text;
+    in property <string> placeholder: "Search";
+    callback edited(string);
+    // Esc in an empty field (e.g. to close the dialog around it).
+    callback cancel();
+
+    height: Theme.control-height;
+    min-width: 160px;
+    accessible-role: text-input;
+    accessible-label: root.placeholder;
+    accessible-value: root.text;
+    forward-focus: input;
+
+    function clear() {
+        root.text = "";
+        root.edited("");
+    }
+
+    Rectangle {
+        border-radius: Theme.radius;
+        background: Theme.control;
+        border-width: 1px;
+        border-color: input.has-focus ? Theme.accent : touch.has-hover ? Theme.border-strong : Theme.border;
+        animate border-color { duration: 120ms; }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => {
+            input.focus();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-m;
+        padding-right: Theme.space-xs;
+        spacing: Theme.space-s;
+        VerticalLayout {
+            alignment: center;
+            Icon {
+                source: @image-url("icons/lucide/search.svg");
+                color: Theme.text-faint;
+                size: 16px;
+            }
+        }
+
+        Rectangle {
+            clip: true;
+            horizontal-stretch: 1;
+            input := TextInput {
+                accessible-role: none;
+                text <=> root.text;
+                color: Theme.text;
+                font-size: Theme.font-body;
+                vertical-alignment: center;
+                single-line: true;
+                selection-background-color: Theme.accent;
+                selection-foreground-color: Theme.on-accent;
+                edited => {
+                    root.edited(self.text);
+                }
+                key-pressed(event) => {
+                    if event.text == Key.Escape {
+                        if root.text != "" {
+                            root.clear();
+                        } else {
+                            root.cancel();
+                        }
+                        return accept;
+                    }
+                    reject
+                }
+            }
+
+            if root.text == "": Text {
+                text: root.placeholder;
+                color: Theme.text-faint;
+                font-size: Theme.font-body;
+                vertical-alignment: center;
+                horizontal-alignment: left;
+                width: parent.width;
+            }
+        }
+
+        if root.text != "": VerticalLayout {
+            alignment: center;
+            IconButton {
+                icon: @image-url("icons/lucide/x.svg");
+                label: "Clear search";
+                size: 28px;
+                icon-size: 14px;
+                clicked => {
+                    root.clear();
+                }
+            }
+        }
     }
 }

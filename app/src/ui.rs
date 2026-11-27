@@ -10,7 +10,7 @@ use chronoclip_capture::{OpenWindow, list_windows};
 use chronoclip_core::disk::{
     estimate_buffer_bytes, format_gb, nominal_bitrate_mbps, tmpfs_warning,
 };
-use chronoclip_core::games::{catalog, find_game};
+use chronoclip_core::games::{catalog, find_game, matches_query};
 use chronoclip_core::installed::InstalledGame;
 use chronoclip_core::launchers::Launchers;
 use chronoclip_core::paths::{config_home, data_home};
@@ -148,12 +148,43 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
     let apply = Rc::new(apply);
 
     // Window picker: the open windows as listed when it was opened (or refreshed).
+    // `picker_all`: every listed window with its row; `picker_windows`: the ones shown
+    // (filtered by the search text), whose index the Record button passes.
+    let picker_all: Rc<RefCell<Vec<(OpenWindow, WindowRow)>>> = Rc::default();
     let picker_windows: Rc<RefCell<Vec<OpenWindow>>> = Rc::default();
+    let filter_picker = {
+        let weak = window.as_weak();
+        let picker_all = Rc::clone(&picker_all);
+        let picker_windows = Rc::clone(&picker_windows);
+        move || {
+            let Some(window) = weak.upgrade() else { return };
+            let query = window.get_picker_query();
+            let (windows, rows): (Vec<OpenWindow>, Vec<WindowRow>) = picker_all
+                .borrow()
+                .iter()
+                .filter(|(w, row)| {
+                    let mut terms = vec![row.title.to_string(), row.detail.to_string()];
+                    terms.extend(w.facts.class.iter().cloned());
+                    terms.extend(w.facts.executable());
+                    matches_query(&query, &terms)
+                })
+                .cloned()
+                .unzip();
+            *picker_windows.borrow_mut() = windows;
+            window.set_open_windows(ModelRc::new(VecModel::from(rows)));
+        }
+    };
+    let filter_picker = Rc::new(filter_picker);
+    window.on_search_windows({
+        let filter_picker = Rc::clone(&filter_picker);
+        move |_| filter_picker()
+    });
     window.on_choose_window({
         let weak = window.as_weak();
         let paths = Rc::clone(&paths);
+        let picker_all = Rc::clone(&picker_all);
+        let filter_picker = Rc::clone(&filter_picker);
         let current = Rc::clone(&current);
-        let picker_windows = Rc::clone(&picker_windows);
         move || {
             let Some(window) = weak.upgrade() else { return };
             let windows = match list_windows() {
@@ -202,8 +233,12 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
                     .into(),
                 })
                 .collect();
-            *picker_windows.borrow_mut() = windows;
-            window.set_open_windows(ModelRc::new(VecModel::from(rows)));
+            *picker_all.borrow_mut() = windows.into_iter().zip(rows).collect();
+            // Opening the picker starts a new search; Refresh keeps the text.
+            if !window.get_picker_open() {
+                window.set_picker_query("".into());
+            }
+            filter_picker();
             window.set_picker_open(true);
         }
     });
@@ -263,16 +298,32 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
     });
     // Buttons on the Games tab: section 0 yours ("Remove"), 1 installed and 3 built in
     // ("Don't record"), 2 not recorded ("Record again").
+    window.on_search_games({
+        let weak = window.as_weak();
+        let current = Rc::clone(&current);
+        let controller = Arc::clone(&games_controller);
+        move |_| {
+            let Some(window) = weak.upgrade() else { return };
+            show_games(&window, &current.borrow(), &controller.installed());
+        }
+    });
     window.on_game_action({
+        let weak = window.as_weak();
         let current = Rc::clone(&current);
         let commit = Rc::clone(&commit);
         let controller = Arc::clone(&games_controller);
         move |section, index| {
+            let Some(window) = weak.upgrade() else { return };
             let Ok(index) = usize::try_from(index) else {
                 return;
             };
             let mut settings = current.borrow().clone();
-            let sections = game_sections(&settings, &controller.installed());
+            // The rows as shown, i.e. filtered by the search text.
+            let sections = game_sections(
+                &settings,
+                &controller.installed(),
+                &window.get_games_query(),
+            );
             let Some(row) = usize::try_from(section)
                 .ok()
                 .and_then(|s| sections.get(s))
@@ -578,7 +629,11 @@ struct GameEntry {
 }
 
 /// The Games tab's sections: yours, installed, not recorded, other built-in games.
-fn game_sections(settings: &Settings, installed: &[InstalledGame]) -> [Vec<GameEntry>; 4] {
+fn game_sections(
+    settings: &Settings,
+    installed: &[InstalledGame],
+    query: &str,
+) -> [Vec<GameEntry>; 4] {
     let entry = |game: &Game, extra: Option<&str>| GameEntry {
         game: game.clone(),
         detail: match extra {
@@ -592,15 +647,28 @@ fn game_sections(settings: &Settings, installed: &[InstalledGame]) -> [Vec<GameE
             .iter()
             .any(|g| g.name.eq_ignore_ascii_case(&game.name) || g.covers(game))
     };
-    let mine = settings.games.iter().map(|g| entry(g, None)).collect();
+    // Search: name, executables, title rule, Steam ids and where it was found.
+    let found = |game: &Game, extra: Option<&str>| {
+        let mut terms = game.search_terms();
+        terms.extend(extra.map(str::to_owned));
+        matches_query(query, &terms)
+    };
+    let mine = settings
+        .games
+        .iter()
+        .filter(|g| found(g, None))
+        .map(|g| entry(g, None))
+        .collect();
     let installed_rows: Vec<GameEntry> = installed
         .iter()
         .filter(|i| !yours(&i.game) && !settings.is_never_recorded(&i.game))
+        .filter(|i| found(&i.game, Some(&i.source)))
         .map(|i| entry(&i.game, Some(&i.source)))
         .collect();
     let ignored = settings
         .never_record
         .iter()
+        .filter(|g| found(g, None))
         .map(|g| entry(g, None))
         .collect();
     let builtin = catalog()
@@ -609,15 +677,17 @@ fn game_sections(settings: &Settings, installed: &[InstalledGame]) -> [Vec<GameE
             !yours(g)
                 && !settings.is_never_recorded(g)
                 && !installed.iter().any(|i| i.game.name == g.name)
+                && found(g, None)
         })
         .map(|g| entry(g, None))
         .collect();
     [mine, installed_rows, ignored, builtin]
 }
 
-/// Fill the Games tab.
+/// Fill the Games tab (filtered by its search text).
 fn show_games(window: &MainWindow, settings: &Settings, installed: &[InstalledGame]) {
-    let [mine, installed, ignored, builtin] = game_sections(settings, installed);
+    let query = window.get_games_query();
+    let [mine, installed, ignored, builtin] = game_sections(settings, installed, &query);
     let rows = |entries: Vec<GameEntry>, action: &str, known: bool| -> ModelRc<GameRow> {
         let rows: Vec<GameRow> = entries
             .into_iter()

@@ -226,6 +226,27 @@ impl Game {
     }
 }
 
+impl Game {
+    /// Everything a search can match: name, executables, title rule and Steam ids.
+    pub fn search_terms(&self) -> Vec<String> {
+        std::iter::once(self.name.clone())
+            .chain(self.executables.iter().cloned())
+            .chain(self.title_contains.iter().cloned())
+            .chain(self.steam_app_ids.iter().map(u32::to_string))
+            .collect()
+    }
+}
+
+/// True if every word of `query` appears (case-insensitive, anywhere) in one of `terms`. An
+/// empty query matches everything. "elden exe" finds ELDEN RING (`eldenring.exe`).
+pub fn matches_query<S: AsRef<str>>(query: &str, terms: &[S]) -> bool {
+    let terms: Vec<String> = terms.iter().map(|t| t.as_ref().to_lowercase()).collect();
+    query
+        .to_lowercase()
+        .split_whitespace()
+        .all(|word| terms.iter().any(|t| t.contains(word)))
+}
+
 /// Programs that run many different games or apps: their name doesn't identify a game, so a
 /// picked window running one of them is matched by its title instead.
 const GENERIC_EXECUTABLES: &[&str] = &[
@@ -568,6 +589,39 @@ mod tests {
     fn catalog_rejects_mistakes() {
         assert!(parse_catalog("[[game]]\nname = \"X\"\nexecutable = [\"x.exe\"]\n").is_err()); // typo
         assert!(parse_catalog("[[game]]\nname = \"X\"\nsteam_app_ids = [\"12\"]\n").is_err());
+    }
+
+    #[test]
+    fn search_matches_any_field_and_all_words() {
+        let elden = Game {
+            name: "ELDEN RING".into(),
+            executables: vec!["eldenring.exe".into()],
+            steam_app_ids: vec![1_245_620],
+            title_contains: None,
+        };
+        let terms = elden.search_terms();
+        for query in [
+            "",
+            "  ",
+            "elden",
+            "RING",
+            "eldenring.exe",
+            "1245",
+            "elden exe",
+            "ring 620",
+        ] {
+            assert!(matches_query(query, &terms), "{query:?}");
+        }
+        for query in ["wow", "elden wow", "1245621"] {
+            assert!(!matches_query(query, &terms), "{query:?}");
+        }
+        let gears = Game::by_title("GLXGears");
+        assert!(matches_query("gears", &gears.search_terms()));
+        // Extra terms, e.g. where it was found.
+        assert!(matches_query(
+            "faugus",
+            &["StarCraft II", "~/Faugus/battlenet"]
+        ));
     }
 
     #[test]

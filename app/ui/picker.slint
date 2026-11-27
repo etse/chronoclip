@@ -4,6 +4,7 @@
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Button, ButtonKind, Card, Icon, IconButton } from "components.slint";
+import { SearchField } from "controls.slint";
 
 /// One open window in the picker.
 export struct WindowRow {
@@ -80,12 +81,14 @@ component WindowItem {
 
 export component WindowPicker inherits Rectangle {
     in property <[WindowRow]> windows;
+    in-out property <string> query;
+    callback search(string);
     callback pick(int);
     callback refresh();
     callback close();
 
     background: #000000a0;
-    forward-focus: keys;
+    forward-focus: search;
 
     // Clicks outside the dialog close it.
     TouchArea {
@@ -147,13 +150,24 @@ export component WindowPicker inherits Rectangle {
                 }
             }
 
+            search := SearchField {
+                text <=> root.query;
+                placeholder: "Search windows or programs";
+                edited(text) => {
+                    root.search(text);
+                }
+                cancel => {
+                    root.close();
+                }
+            }
+
             Rectangle {
                 vertical-stretch: 1;
                 border-radius: Theme.radius;
                 background: Theme.surface;
 
                 if root.windows.length == 0: Text {
-                    text: "No windows found. Start the game, then press Refresh.";
+                    text: root.query != "" ? "No windows match “" + root.query + "”." : "No windows found. Start the game, then press Refresh.";
                     color: Theme.text-faint;
                     font-size: Theme.font-body;
                 }

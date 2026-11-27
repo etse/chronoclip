@@ -56,6 +56,11 @@ export component MainWindow inherits Window {
     callback choose-window();
     callback pick-window(int);
     callback game-action(int, int);
+    // Search texts on the Games tab and in the window picker (Rust filters).
+    in-out property <string> games-query;
+    in-out property <string> picker-query;
+    callback search-games(string);
+    callback search-windows(string);
     // A tab was opened (the Games tab looks for installed games again).
     callback tab-opened(int);
     // A game just picked can't be recorded: Rust removes it again.
@@ -173,6 +178,10 @@ export component MainWindow inherits Window {
             game-action(section, index) => {
                 root.game-action(section, index);
             }
+            query <=> root.games-query;
+            search(text) => {
+                root.search-games(text);
+            }
         }
 
         if root.current-tab == 2: SettingsPage {
@@ -224,6 +233,10 @@ export component MainWindow inherits Window {
         y: root.custom-title-bar ? Theme.title-bar-height : 0;
         height: root.height - self.y;
         windows: root.open-windows;
+        query <=> root.picker-query;
+        search(text) => {
+            root.search-windows(text);
+        }
         init => {
             self.focus();
         }
