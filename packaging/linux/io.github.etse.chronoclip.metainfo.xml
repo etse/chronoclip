@@ -36,8 +36,12 @@
   <url type="bugtracker">https://github.com/etse/chronoclip/issues</url>
   <screenshots>
     <screenshot type="default">
-      <caption>Recording World of Warcraft, with the Save replay button and the last clip</caption>
+      <caption>Recording World of Warcraft, with the Save replay button and this session's clips</caption>
       <image>https://raw.githubusercontent.com/etse/chronoclip/main/docs/images/chronoclip-window.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Games: your games, the ones installed on this computer and the built-in list</caption>
+      <image>https://raw.githubusercontent.com/etse/chronoclip/main/docs/images/chronoclip-games.png</image>
     </screenshot>
     <screenshot>
       <caption>Settings</caption>
@@ -67,6 +71,11 @@
   </keywords>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.3.0" date="2026-11-27">
+      <description>
+        <p>The first beta: Chronoclip records any game, not only World of Warcraft. It finds installed Steam games and Battle.net games by itself, knows 176 popular games, asks about games it doesn't know, lets you pick any window, and saves each game's clips in their own folder. Home lists the clips of this session, and the AppImage can add itself to the app menu.</p>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-11-27">
       <description>
         <p>A new, modern dark look: a Home page with the recording status, the replay buffer, a big Save replay button and your last clip; settings in cards; a hotkey recorder; an About page; and an own title bar with tabs.</p>

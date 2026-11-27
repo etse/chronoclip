@@ -6,6 +6,11 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-27
+
+The first beta: Chronoclip records any game, not only World of Warcraft. It finds your games by
+itself, asks about ones it doesn't know, and keeps each game's clips in their own folder.
+
 ### Added
 
 - **Record other games:** *Choose window* on Home (or *Add a game window…* on the new **Games** tab)
