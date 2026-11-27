@@ -11,6 +11,8 @@ use chronoclip_core::disk::{
     estimate_buffer_bytes, format_gb, nominal_bitrate_mbps, tmpfs_warning,
 };
 use chronoclip_core::games::find_game;
+use chronoclip_core::launchers::Launchers;
+use chronoclip_core::paths::data_dirs;
 use chronoclip_core::settings::{
     AudioMode, DEFAULT_FPS, EncoderPreference, SUPPORTED_FPS, Settings,
 };
@@ -146,6 +148,7 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
     let picker_windows: Rc<RefCell<Vec<OpenWindow>>> = Rc::default();
     window.on_choose_window({
         let weak = window.as_weak();
+        let paths = Rc::clone(&paths);
         let current = Rc::clone(&current);
         let picker_windows = Rc::clone(&picker_windows);
         move || {
@@ -164,6 +167,7 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
                 .collect();
             let games = current.borrow().all_games();
             let recording = picker_controller.current_window();
+            let launchers = load_launchers(&paths);
             let rows: Vec<WindowRow> = windows
                 .iter()
                 .map(|w| WindowRow {
@@ -173,11 +177,20 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
                             format!("Recording now · {}", game.name)
                         }
                         Some(game) => format!("In your games: {}", game.name),
-                        None => w
-                            .facts
-                            .executable()
-                            .or_else(|| w.facts.class.last().cloned())
-                            .unwrap_or_default(),
+                        None => {
+                            let program = w
+                                .facts
+                                .executable()
+                                .or_else(|| w.facts.class.last().cloned())
+                                .unwrap_or_default();
+                            // The launcher's name, when it says more than the title.
+                            match launchers.name_for(&w.facts) {
+                                Some(name) if name != w.facts.title.trim() => {
+                                    format!("{program} · {name}")
+                                }
+                                _ => program,
+                            }
+                        }
                     }
                     .into(),
                 })
@@ -189,6 +202,7 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
     });
     window.on_pick_window({
         let weak = window.as_weak();
+        let paths = Rc::clone(&paths);
         let current = Rc::clone(&current);
         let commit = Rc::clone(&commit);
         move |index| {
@@ -200,7 +214,10 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
             let mut settings = current.borrow().clone();
             // A window one of your games already matches is just recorded, not added again.
             let known = find_game(&settings.all_games(), &picked.facts).map(|g| g.name.clone());
-            let name = known.unwrap_or_else(|| settings.add_game(Game::from_window(&picked.facts)));
+            let name = known.unwrap_or_else(|| {
+                let launcher_name = load_launchers(&paths).name_for(&picked.facts);
+                settings.add_game(Game::from_window(&picked.facts, launcher_name))
+            });
             tracing::info!(game = %name, title = %picked.facts.title, "window picked");
             window.set_picker_open(false);
             // The picked window wins over the game being recorded (user override).
@@ -478,6 +495,15 @@ fn start_resize(window: &MainWindow, edge: ResizeEdge) {
             });
         window.window().dispatch_event(WindowEvent::PointerExited);
     });
+}
+
+/// The installed games the launchers know (read when the picker needs them).
+fn load_launchers(paths: &Paths) -> Launchers {
+    let data_home = data_dirs(&paths.home_dir)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| paths.home_dir.join(".local/share"));
+    Launchers::load(&paths.home_dir, &data_home)
 }
 
 pub fn set_message(window: &MainWindow, text: &str, is_error: bool) {

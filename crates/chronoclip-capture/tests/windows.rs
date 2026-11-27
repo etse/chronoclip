@@ -4,8 +4,13 @@
 #[ignore = "needs X11"]
 fn lists_open_windows() -> Result<(), Box<dyn std::error::Error>> {
     let windows = chronoclip_capture::list_windows()?;
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    let data_home = chronoclip_core::paths::data_dirs(&home).remove(0);
+    let launchers = chronoclip_core::launchers::Launchers::load(&home, &data_home);
     for w in &windows {
-        let game = chronoclip_core::Game::from_window(&w.facts);
+        let game = chronoclip_core::Game::from_window(&w.facts, launchers.name_for(&w.facts));
         eprintln!(
             "{:?} {:?} → {:?} [{}]",
             w.facts.title,
@@ -17,4 +22,22 @@ fn lists_open_windows() -> Result<(), Box<dyn std::error::Error>> {
     assert!(!windows.is_empty(), "no windows found");
     assert!(windows.iter().all(|w| !w.facts.title.trim().is_empty()));
     Ok(())
+}
+
+/// Steam names from this computer's real manifests (needs Steam with games installed).
+#[test]
+#[ignore = "needs Steam with installed games"]
+fn steam_names_on_this_computer() {
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    let data_home = chronoclip_core::paths::data_dirs(&home).remove(0);
+    let launchers = chronoclip_core::launchers::Launchers::load(&home, &data_home);
+    for id in [1_245_620, 526_870, 1_623_730, 2_694_490, 1_493_710] {
+        eprintln!("{id}: {:?}", launchers.steam_name(id));
+    }
+    assert!(
+        launchers.steam_name(1_245_620).is_some(),
+        "ELDEN RING not found"
+    );
 }

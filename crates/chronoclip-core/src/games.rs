@@ -89,12 +89,15 @@ impl Game {
         by_exe || by_title
     }
 
-    /// A new game entry for a window the user picked: named after the window title (or the
-    /// executable), matched by its executable when it has a specific one, else by title.
-    pub fn from_window(window: &WindowFacts) -> Self {
+    /// A new game entry for a window the user picked: named by its launcher (`launcher_name`,
+    /// see [`crate::launchers::Launchers::name_for`]), else after the window title or the
+    /// executable; matched by its executable when it has a specific one, else by title.
+    pub fn from_window(window: &WindowFacts, launcher_name: Option<String>) -> Self {
         let title = window.title.trim();
         let exe = window.executable();
-        let name = if title.is_empty() {
+        let name = if let Some(name) = launcher_name.filter(|n| !n.trim().is_empty()) {
+            name.trim().to_owned()
+        } else if title.is_empty() {
             exe.as_deref()
                 .map(|e| e.strip_suffix(".exe").unwrap_or(e).to_owned())
                 .unwrap_or_else(|| "Game".to_owned())
@@ -183,9 +186,19 @@ pub struct WindowFacts {
     /// The owning process's name (`/proc/<pid>/comm`) and command-line arguments. Wine sets
     /// these to the Windows executable (path).
     pub process_names: Vec<String>,
+    /// The owning process's launcher variables ([`crate::launchers::ENV_KEYS`] only).
+    pub env: Vec<(String, String)>,
 }
 
 impl WindowFacts {
+    /// Value of launcher variable `key`, if set.
+    pub fn env(&self, key: &str) -> Option<&str> {
+        self.env
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+    }
+
     /// The executable that identifies the window's program: a Windows `.exe` (Wine/Proton),
     /// else the program file of the command line, else the process name. `None` for generic
     /// runners (Wine itself, Python, Java, …).
@@ -235,6 +248,7 @@ mod tests {
             title: title.into(),
             class: class.iter().map(|&s| s.into()).collect(),
             process_names: process.iter().map(|&s| s.into()).collect(),
+            env: Vec::new(),
         }
     }
 
@@ -306,27 +320,33 @@ mod tests {
     #[test]
     fn picked_window_becomes_a_game() {
         // Proton game: the .exe from the command line, named after the window.
-        let elden = Game::from_window(&facts(
-            "ELDEN RING™",
-            &["steam_app_1245620"],
-            &[
-                "eldenring.exe",
-                r"Z:\home\me\Games\ELDEN RING\Game\eldenring.exe",
-            ],
-        ));
+        let elden = Game::from_window(
+            &facts(
+                "ELDEN RING™",
+                &["steam_app_1245620"],
+                &[
+                    "eldenring.exe",
+                    r"Z:\home\me\Games\ELDEN RING\Game\eldenring.exe",
+                ],
+            ),
+            None,
+        );
         assert_eq!(elden.name, "ELDEN RING™");
         assert_eq!(elden.executables, ["eldenring.exe"]);
         assert_eq!(elden.title_contains, None);
         assert_eq!(elden.describe(), "eldenring.exe");
         // Native game: the program file.
-        let factorio = Game::from_window(&facts(
-            "Factorio 2.0.55",
-            &["factorio", "factorio"],
-            &[
-                "factorio",
-                "/home/me/.steam/steamapps/common/Factorio/bin/x64/factorio",
-            ],
-        ));
+        let factorio = Game::from_window(
+            &facts(
+                "Factorio 2.0.55",
+                &["factorio", "factorio"],
+                &[
+                    "factorio",
+                    "/home/me/.steam/steamapps/common/Factorio/bin/x64/factorio",
+                ],
+            ),
+            None,
+        );
         assert_eq!(factorio.executables, ["factorio"]);
         let chrome = facts(
             "YouTube",
@@ -338,33 +358,42 @@ mod tests {
         );
         assert_eq!(chrome.executable().as_deref(), Some("chrome"));
         // A generic runner: matched by title instead.
-        let py = Game::from_window(&facts(
-            "My Pygame",
-            &[],
-            &["python3", "/usr/bin/python3", "game.py"],
-        ));
+        let py = Game::from_window(
+            &facts(
+                "My Pygame",
+                &[],
+                &["python3", "/usr/bin/python3", "game.py"],
+            ),
+            None,
+        );
         assert_eq!(py.executables, Vec::<String>::new());
         assert_eq!(py.title_contains.as_deref(), Some("My Pygame"));
         assert_eq!(py.describe(), "Window title contains “My Pygame”");
         // No title: named after the executable.
         assert_eq!(
-            Game::from_window(&facts(" ", &[], &["Game.exe"])).name,
+            Game::from_window(&facts(" ", &[], &["Game.exe"]), None).name,
             "Game"
         );
+        // The launcher's name wins over the window title.
+        let named = Game::from_window(
+            &facts("ELDEN RING™", &[], &["eldenring.exe"]),
+            Some("ELDEN RING".into()),
+        );
+        assert_eq!(named.name, "ELDEN RING");
+        assert_eq!(named.executables, ["eldenring.exe"]);
     }
 
     #[test]
     fn duplicates_are_detected() {
         let wow = Game::world_of_warcraft();
-        let picked = Game::from_window(&facts("World of Warcraft", &[], &["Wow.exe"]));
+        let picked = Game::from_window(&facts("World of Warcraft", &[], &["Wow.exe"]), None);
         assert!(wow.covers(&picked));
-        let elden = Game::from_window(&facts("ELDEN RING", &[], &["eldenring.exe"]));
+        let elden = Game::from_window(&facts("ELDEN RING", &[], &["eldenring.exe"]), None);
         assert!(!wow.covers(&elden));
-        assert!(elden.covers(&Game::from_window(&facts(
-            "Other title",
-            &[],
-            &["EldenRing.exe"]
-        ))));
+        assert!(elden.covers(&Game::from_window(
+            &facts("Other title", &[], &["EldenRing.exe"]),
+            None
+        )));
         let t = Game::by_title("Pygame");
         assert!(t.covers(&Game::by_title("pygame ")));
         assert!(!t.covers(&Game::by_title("Other")));

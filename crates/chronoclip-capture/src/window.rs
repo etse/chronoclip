@@ -1,6 +1,7 @@
 //! Finding the window to capture.
 
 use chronoclip_core::games::{Game, WindowFacts, find_game};
+use chronoclip_core::launchers::ENV_KEYS;
 use x11_dl::xlib;
 
 use crate::error::CaptureError;
@@ -114,6 +115,7 @@ fn client_windows(conn: &XConnection) -> impl Iterator<Item = OpenWindow> + '_ {
                         .map(|(name, class)| vec![name, class])
                         .unwrap_or_default(),
                     process_names: pid.map(process_names).unwrap_or_default(),
+                    env: pid.map(launcher_env).unwrap_or_default(),
                 },
             }
         })
@@ -132,6 +134,22 @@ pub(crate) fn process_names(pid: u32) -> Vec<String> {
                 .map(|arg| String::from_utf8_lossy(arg).into_owned()),
         )
         .filter(|n| !n.is_empty())
+        .collect()
+}
+
+/// The launcher variables ([`ENV_KEYS`]) from the environment of process `pid` (kernel
+/// metadata, readable for the user's own processes). Everything else is dropped right away.
+fn launcher_env(pid: u32) -> Vec<(String, String)> {
+    let environ = std::fs::read(format!("/proc/{pid}/environ")).unwrap_or_default();
+    environ
+        .split(|&b| b == 0)
+        .filter_map(|entry| {
+            let entry = std::str::from_utf8(entry).ok()?;
+            let (key, value) = entry.split_once('=')?;
+            ENV_KEYS
+                .contains(&key)
+                .then(|| (key.to_owned(), value.to_owned()))
+        })
         .collect()
 }
 

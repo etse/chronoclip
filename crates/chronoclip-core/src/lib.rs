@@ -16,6 +16,7 @@ pub mod disk;
 pub mod games;
 pub mod hotkey;
 pub mod ipc;
+pub mod launchers;
 pub mod paths;
 pub mod segments;
 pub mod settings;
