@@ -12,7 +12,7 @@ use chronoclip_core::disk::{
 use chronoclip_core::settings::{
     AudioMode, DEFAULT_FPS, EncoderPreference, SUPPORTED_FPS, Settings,
 };
-use chronoclip_core::{Paths, autostart};
+use chronoclip_core::{Game, Paths, autostart};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use crate::controller::Controller;
@@ -101,7 +101,9 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
         let paths = Rc::clone(&paths);
         move |done: &str| {
             let Some(window) = weak.upgrade() else { return };
-            let settings = match read_settings(&window, &paths) {
+            // Games aren't on this page; keep them (also on "Reset to defaults").
+            let games = current.borrow().games.clone();
+            let settings = match read_settings(&window, &paths, games) {
                 Ok(s) => s,
                 Err(e) => return set_message(&window, &e, true),
             };
@@ -370,7 +372,7 @@ fn show_settings(window: &MainWindow, settings: &Settings, paths: &Paths) {
     window.set_output_dir(paths.contract_home(&settings.output_dir(paths)).into());
 }
 
-fn read_settings(window: &MainWindow, paths: &Paths) -> Result<Settings, String> {
+fn read_settings(window: &MainWindow, paths: &Paths, games: Vec<Game>) -> Result<Settings, String> {
     let hotkey = window
         .get_hotkey()
         .trim()
@@ -396,6 +398,7 @@ fn read_settings(window: &MainWindow, paths: &Paths) -> Result<Settings, String>
         custom_title_bar: window.get_custom_title_bar(),
         buffer_dir: dir_setting(&window.get_buffer_dir(), &paths.default_buffer_dir, paths),
         output_dir: dir_setting(&window.get_output_dir(), &paths.default_output_dir, paths),
+        games,
     };
     settings
         .validate()

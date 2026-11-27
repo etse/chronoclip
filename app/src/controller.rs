@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, mpsc};
 
-use chronoclip_capture::WindowMatcher;
+use chronoclip_core::Game;
 use chronoclip_core::disk::{format_duration, format_size};
 use chronoclip_core::ipc::{Request, Response};
 use chronoclip_core::settings::Settings;
@@ -327,9 +327,9 @@ impl Controller {
             encoder: settings.encoder,
             audio: settings.audio,
             microphone: settings.microphone,
-            matcher: match std::env::var(WINDOW_ENV) {
-                Ok(title) if !title.is_empty() => WindowMatcher::TitleContains(title),
-                _ => WindowMatcher::WorldOfWarcraft,
+            games: match std::env::var(WINDOW_ENV) {
+                Ok(title) if !title.is_empty() => vec![Game::by_title(&title)],
+                _ => settings.all_games(),
             },
         };
         let mut slot = self.recorder.lock().unwrap_or_else(|e| e.into_inner());
@@ -348,10 +348,10 @@ impl Controller {
         slot.recorder = None;
         let window = self.window.clone();
         let tray = self.tray.get().cloned();
-        let matcher = config.matcher.clone();
+        let waiting_for = waiting_for(&config.games);
         let last_save = Arc::clone(&self.last_save);
         slot.recorder = Some(Recorder::start(config.clone(), move |status| {
-            let (text, recording) = status_text(&status, &matcher);
+            let (text, recording) = status_text(&status, &waiting_for);
             let state = match status {
                 RecorderStatus::Recording { .. } => TrayState::Recording,
                 RecorderStatus::Error(_) => TrayState::Error,
@@ -362,7 +362,7 @@ impl Controller {
                 tray_text.push('\n');
                 tray_text.push_str(line);
             }
-            let view = status_view(&status, &matcher);
+            let view = status_view(&status, &waiting_for);
             let _ = window.upgrade_in_event_loop(move |w| {
                 w.set_status_text(text.into());
                 w.set_recording(recording);
@@ -402,11 +402,15 @@ struct StatusView {
     buffer_size: String,
 }
 
-fn status_view(status: &RecorderStatus, matcher: &WindowMatcher) -> StatusView {
-    let game = match matcher {
-        WindowMatcher::WorldOfWarcraft => "World of Warcraft".to_owned(),
-        WindowMatcher::TitleContains(t) => t.clone(),
-    };
+/// What the app waits for: the game's name if there is only one, else "your game".
+fn waiting_for(games: &[Game]) -> String {
+    match games {
+        [game] => game.name.clone(),
+        _ => "your game".to_owned(),
+    }
+}
+
+fn status_view(status: &RecorderStatus, waiting_for: &str) -> StatusView {
     let idle = |state, title: String, detail: String| StatusView {
         state,
         title,
@@ -418,10 +422,11 @@ fn status_view(status: &RecorderStatus, matcher: &WindowMatcher) -> StatusView {
     match status {
         RecorderStatus::WaitingForWindow => idle(
             RecState::Waiting,
-            format!("Waiting for {game}"),
+            format!("Waiting for {waiting_for}"),
             "Start the game: recording begins by itself.".into(),
         ),
         RecorderStatus::Recording {
+            game,
             width,
             height,
             fps,
@@ -442,7 +447,7 @@ fn status_view(status: &RecorderStatus, matcher: &WindowMatcher) -> StatusView {
             }
             StatusView {
                 state: RecState::Recording,
-                title: game,
+                title: game.clone(),
                 detail,
                 fraction: if retention.is_zero() {
                     0.0
@@ -470,15 +475,11 @@ fn capitalize(s: &str) -> String {
         .unwrap_or_default()
 }
 
-fn status_text(status: &RecorderStatus, matcher: &WindowMatcher) -> (String, bool) {
+fn status_text(status: &RecorderStatus, waiting_for: &str) -> (String, bool) {
     match status {
-        RecorderStatus::WaitingForWindow => match matcher {
-            WindowMatcher::WorldOfWarcraft => ("Waiting for World of Warcraft…".into(), false),
-            WindowMatcher::TitleContains(t) => {
-                (format!("Waiting for a window named “{t}”…"), false)
-            }
-        },
+        RecorderStatus::WaitingForWindow => (format!("Waiting for {waiting_for}…"), false),
         RecorderStatus::Recording {
+            game,
             width,
             height,
             fps,
@@ -489,7 +490,7 @@ fn status_text(status: &RecorderStatus, matcher: &WindowMatcher) -> (String, boo
             audio,
         } => {
             let mut text = format!(
-                "Recording {width}×{height} @ {fps} fps · buffer {} / {} · {}",
+                "Recording {game} {width}×{height} @ {fps} fps · buffer {} / {} · {}",
                 format_duration(*buffered),
                 format_duration(*retention),
                 format_size(*bytes),

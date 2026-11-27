@@ -9,6 +9,7 @@ use std::sync::mpsc::{Sender, channel};
 use std::time::{Duration, Instant};
 
 use chronoclip_capture::{AudioCapture, AudioSink, AudioSourceKind, AudioSourceState, GameWindow};
+use chronoclip_core::Game;
 
 enum Event {
     Samples { peak: f32, frames: usize },
@@ -85,6 +86,7 @@ fn records_one_application_stream() {
     capture.set_game(Some(GameWindow {
         pid: Some(tone.0.id()),
         title: "tone".into(),
+        game: Game::by_title("tone"),
     }));
     let (states, frames, peak) = collect(&rx, Duration::from_secs(3));
     drop(capture);
@@ -107,6 +109,7 @@ fn falls_back_to_all_sound_without_game_stream() {
     capture.set_game(Some(GameWindow {
         pid: Some(1), // init never plays audio
         title: "no such game".into(),
+        game: Game::by_title("no such game"),
     }));
     let (states, frames, _) = collect(&rx, Duration::from_secs(2));
     drop(capture);
@@ -122,15 +125,15 @@ fn falls_back_to_all_sound_without_game_stream() {
 #[test]
 #[ignore = "needs World of Warcraft running with sound"]
 fn finds_running_wow_stream() {
-    let window =
-        chronoclip_capture::find_window(&chronoclip_capture::WindowMatcher::WorldOfWarcraft)
-            .expect("X11")
-            .expect("World of Warcraft is not running");
+    let window = chronoclip_capture::find_window(&[Game::world_of_warcraft()])
+        .expect("X11")
+        .expect("World of Warcraft is not running");
     let (tx, rx) = channel();
     let capture = AudioCapture::start(AudioSourceKind::Game, TestSink(tx)).expect("start");
     capture.set_game(Some(GameWindow {
         pid: window.pid,
         title: window.title.clone(),
+        game: window.game.clone(),
     }));
     let (states, frames, peak) = collect(&rx, Duration::from_secs(3));
     drop(capture);

@@ -13,12 +13,14 @@ pub mod autostart;
 pub mod chime;
 pub mod clips;
 pub mod disk;
+pub mod games;
 pub mod hotkey;
 pub mod ipc;
 pub mod paths;
 pub mod segments;
 pub mod settings;
 
+pub use games::Game;
 pub use hotkey::Hotkey;
 pub use paths::Paths;
 pub use settings::{AudioMode, EncoderPreference, Settings};

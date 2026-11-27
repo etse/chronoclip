@@ -35,14 +35,16 @@ Findings while planning (2026-11-27, on the maintainer's desktop):
 
 Detection only reads window properties and `/proc/<pid>/{comm,cmdline,environ}` (kernel metadata). Never `/proc/<pid>/maps` or `mem` (hard rule 1).
 
-- [ ] Core: a `Game` model (name, how it's matched: executable, Steam app id, window title) and a games list in the settings, with WoW built in; replaces the WoW-only `WindowMatcher` (tests for matching and settings validation)
+- [x] Core: a `Game` model (name, how it's matched: executable, Steam app id, window title) and a games list in the settings, with WoW built in; replaces the WoW-only `WindowMatcher` (tests for matching and settings validation)
+  - `chronoclip-core::games` (`Game` with `executables` / `title_contains`, `WindowFacts`, `find_game`); `Settings::games` (`[[games]]`, invalid entries dropped on load) and `all_games()` = WoW first, then the user's. Steam app ids come with the launcher task. Game sound is matched by the game's executables and name instead of WoW's. `CHRONOCLIP_WINDOW` is now a title-only game
+  - Test instance: a game added only in `settings.toml` (`games = [{ name = "Test Game", title_contains = "cc-game-a" }]`) was found (`found window game=Test Game`), its sound recorded by process id, and a 12 s clip saved (H.264 + AAC). The Settings page keeps the games list when it saves
 - [ ] Window picker: "Choose a window…" on Home lists open windows (title, executable); picking one adds it to your games and records it
 - [ ] Game names from launchers: Steam (`steam_app_<id>` / `SteamAppId` → `appmanifest`, tools filtered out), Lutris (`pga.db`), Faugus, Heroic; the executable name as fallback
 - [ ] Game score: signals for (Wine/Proton/Steam launched, bypass-compositor `1`, fullscreen or monitor-sized, GameMode) and against (known launchers and helpers, browsers, Electron apps); unit tests on recorded window lists, including the Battle.net launcher above
 - [ ] "Record this game?" notification for a likely but unknown game (Always / Not this one), remembered by executable
 - [ ] Per-game clips: folder and file name after the game (safe file names); status texts, tray, "nothing recorded" message name the game
 - [ ] Switching games: when the recorded game closes, look again; a different game clears the buffer first
-- [ ] Settings: a Games card (detected/added games, remove, never record)
+- [ ] Settings: a Games card listing your games (World of Warcraft built in, games you added or that were detected), with **Remove** for one added by mistake, and the "never record" list (built with the window picker, so a wrong pick can be undone right away)
 - [ ] Texts: "for World of Warcraft" → "for your games" in README, About, desktop file, metainfo, CLI help, autostart file
 - [ ] Docs: README, architecture.md (detection), AGENTS.md (project description), CHANGELOG
 - [ ] Verified: fmt, clippy, tests; test instance with test windows (known game, unknown game → question, launcher ignored, switch clears buffer)

@@ -7,9 +7,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
-use chronoclip_capture::{
-    CaptureStatus, CudaDestination, WindowMatcher, X11WindowCapture, find_window,
-};
+use chronoclip_capture::{CaptureStatus, CudaDestination, X11WindowCapture, find_window};
 use chronoclip_encode::{EncoderConfig, NvencEncoder, SegmentWriter, StreamConfig};
 
 struct KillOnDrop(Child);
@@ -33,10 +31,10 @@ fn captures_glxgears_window() -> Result<(), Box<dyn std::error::Error>> {
             .spawn()?,
     );
 
-    let matcher = WindowMatcher::TitleContains("glxgears".into());
+    let games = [chronoclip_core::Game::by_title("glxgears")];
     let deadline = Instant::now() + Duration::from_secs(5);
     let window = loop {
-        if let Some(w) = find_window(&matcher)? {
+        if let Some(w) = find_window(&games)? {
             break w;
         }
         assert!(Instant::now() < deadline, "glxgears window did not appear");

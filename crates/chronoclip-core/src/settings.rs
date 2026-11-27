@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::games::Game;
 use crate::hotkey::Hotkey;
 use crate::paths::Paths;
 
@@ -69,6 +70,10 @@ pub struct Settings {
     /// `None` means [`Paths::default_output_dir`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_dir: Option<PathBuf>,
+    /// Games added by the user, recorded besides the built-in World of Warcraft. Last field:
+    /// TOML writes it as `[[games]]` tables, which must follow the plain values.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub games: Vec<Game>,
 }
 
 impl Default for Settings {
@@ -84,6 +89,7 @@ impl Default for Settings {
             custom_title_bar: true,
             buffer_dir: None,
             output_dir: None,
+            games: Vec::new(),
         }
     }
 }
@@ -105,6 +111,8 @@ pub enum SettingsError {
     UnsupportedFps(u32),
     #[error("folder must be an absolute path: {0}")]
     RelativePath(PathBuf),
+    #[error("game {0:?} needs a name and an executable or window title")]
+    InvalidGame(String),
 }
 
 impl Settings {
@@ -156,6 +164,9 @@ impl Settings {
                 return Err(SettingsError::RelativePath(dir.clone()));
             }
         }
+        if let Some(game) = self.games.iter().find(|g| !g.is_valid()) {
+            return Err(SettingsError::InvalidGame(game.name.clone()));
+        }
         Ok(())
     }
 
@@ -185,7 +196,21 @@ impl Settings {
                 *dir = None;
             }
         }
+        self.games.retain(|game| {
+            let valid = game.is_valid();
+            if !valid {
+                tracing::warn!(?game, "ignoring game without a name or anything to match");
+            }
+            valid
+        });
         self
+    }
+
+    /// Every game to look for, in priority order: World of Warcraft, then the user's games.
+    pub fn all_games(&self) -> Vec<Game> {
+        std::iter::once(Game::world_of_warcraft())
+            .chain(self.games.iter().cloned())
+            .collect()
     }
 
     pub fn buffer_dir(&self, paths: &Paths) -> PathBuf {
@@ -271,6 +296,39 @@ mod tests {
     }
 
     #[test]
+    fn games_round_trip_and_invalid_ones_are_dropped() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("settings.toml");
+        let elden = Game {
+            name: "Elden Ring".into(),
+            executables: vec!["eldenring.exe".into()],
+            title_contains: None,
+        };
+        let s = Settings {
+            output_dir: Some("/clips".into()),
+            games: vec![elden.clone()],
+            ..Settings::default()
+        };
+        s.save(&path)?;
+        assert_eq!(Settings::load(&path)?, s);
+        let names: Vec<_> = s.all_games().into_iter().map(|g| g.name).collect();
+        assert_eq!(names, ["World of Warcraft", "Elden Ring"]);
+
+        let broken = Game {
+            name: "Broken".into(),
+            executables: Vec::new(),
+            title_contains: None,
+        };
+        let s = Settings {
+            games: vec![broken.clone(), elden.clone()],
+            ..Settings::default()
+        };
+        assert!(matches!(s.validate(), Err(SettingsError::InvalidGame(n)) if n == "Broken"));
+        assert_eq!(s.sanitized().games, [elden]);
+        Ok(())
+    }
+
+    #[test]
     fn missing_file_gives_defaults() -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::tempdir()?;
         let s = Settings::load(&dir.path().join("nope.toml"))?;
@@ -293,6 +351,7 @@ mod tests {
             custom_title_bar: false,
             buffer_dir: Some("/mnt/ssd/buffer".into()),
             output_dir: None,
+            games: vec![Game::by_title("Factorio")],
         };
         s.save(&path)?;
         assert_eq!(Settings::load(&path)?, s);

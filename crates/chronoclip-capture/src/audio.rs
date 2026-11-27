@@ -16,10 +16,11 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+use chronoclip_core::Game;
 use chronoclip_core::audio::{CHANNELS, SAMPLE_RATE};
 use libloading::Library;
 
-use crate::window::{is_wow_executable, process_is_wow};
+use crate::window::process_is;
 
 const LIBRARY: &str = "libpulse.so.0";
 /// How often the main loop wakes up without data (and calls [`AudioSink::tick`]).
@@ -70,12 +71,14 @@ pub trait AudioSink: Send + 'static {
 }
 
 /// The game window whose sound "game only" records.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameWindow {
     /// Process that owns the window (`_NET_WM_PID`).
     pub pid: Option<u32>,
     /// Window title.
     pub title: String,
+    /// The game it belongs to (its executables and name identify the sound stream).
+    pub game: Game,
 }
 
 /// A running audio capture. Dropping it stops the thread.
@@ -693,24 +696,33 @@ impl Drop for Recording<'_, '_> {
 }
 
 /// True if `input` is the game's playback stream:
-/// - same process as the game window (Wine plays sound from the `.exe` process), or a WoW
-///   executable as process or application name (PulseAudio clients such as winepulse), or
-/// - application name "World of Warcraft…" or equal to the window title: Wine as a native
-///   PipeWire client names its stream after the game, and pipewire-pulse then reports no
-///   process id for it.
+/// - same process as the game window (Wine plays sound from the `.exe` process), or one of
+///   the game's executables as process or application name (PulseAudio clients such as
+///   winepulse), or
+/// - application name starting with the game's name or equal to the window title: Wine as a
+///   native PipeWire client names its stream after the game, and pipewire-pulse then reports
+///   no process id for it.
 fn is_game_stream(input: &SinkInput, game: Option<&GameWindow>) -> bool {
-    let pid = game.and_then(|g| g.pid);
-    let title = game.map(|g| g.title.trim()).filter(|t| !t.is_empty());
+    let Some(game) = game else {
+        return false;
+    };
+    let title = Some(game.title.trim()).filter(|t| !t.is_empty());
+    let game_name = game.game.name.trim().to_lowercase();
     let named = |name: &str| {
         let name = name.trim();
-        name.to_lowercase().starts_with("world of warcraft")
+        (!game_name.is_empty() && name.to_lowercase().starts_with(&game_name))
             || title.is_some_and(|t| name.eq_ignore_ascii_case(t))
     };
-    (pid.is_some() && input.pid == pid)
-        || input.binary.as_deref().is_some_and(is_wow_executable)
-        || input.app_name.as_deref().is_some_and(is_wow_executable)
-        || input.app_name.as_deref().is_some_and(named)
-        || input.pid.is_some_and(process_is_wow)
+    (game.pid.is_some() && input.pid == game.pid)
+        || input
+            .binary
+            .as_deref()
+            .is_some_and(|b| game.game.has_executable(b))
+        || input
+            .app_name
+            .as_deref()
+            .is_some_and(|a| game.game.has_executable(a) || named(a))
+        || input.pid.is_some_and(|pid| process_is(pid, &game.game))
 }
 
 /// `logged` remembers the playback streams last logged as "game not found", so the log shows
@@ -894,16 +906,26 @@ mod tests {
         GameWindow {
             pid: Some(pid),
             title: title.into(),
+            game: Game::world_of_warcraft(),
         }
     }
 
     #[test]
     fn finds_game_stream_by_pid_or_name() {
-        let ffplay = window(42, "cc-avtest");
+        let ffplay = GameWindow {
+            game: Game::by_title("cc-avtest"),
+            ..window(42, "cc-avtest")
+        };
         assert!(is_game_stream(&input(Some(42), "ffplay"), Some(&ffplay)));
         assert!(!is_game_stream(&input(Some(43), "ffplay"), Some(&ffplay)));
         assert!(!is_game_stream(&input(None, "ffplay"), None));
-        assert!(is_game_stream(&input(Some(1), "Wow.exe"), None));
+        // No game window yet: nothing is the game's stream.
+        assert!(!is_game_stream(&input(Some(1), "Wow.exe"), None));
+        assert!(is_game_stream(
+            &input(Some(1), "Wow.exe"),
+            Some(&window(2, ""))
+        ));
+        assert!(!is_game_stream(&input(Some(1), "Wow.exe"), Some(&ffplay)));
         let mut wine = input(Some(1), "wine64-preloader");
         assert!(!is_game_stream(
             &wine,
@@ -928,13 +950,18 @@ mod tests {
             &stream,
             Some(&window(532_916, "World of Warcraft"))
         ));
-        assert!(is_game_stream(&stream, None));
+        // Named after the game even when the window title differs.
+        assert!(is_game_stream(&stream, Some(&window(532_916, "WoW"))));
         // Any game whose stream is named like its window.
         let other = SinkInput {
             app_name: Some("Some Game".into()),
             ..stream.clone()
         };
-        assert!(is_game_stream(&other, Some(&window(7, "Some Game"))));
+        let some_game = GameWindow {
+            game: Game::by_title("Some Game"),
+            ..window(7, "Some Game")
+        };
+        assert!(is_game_stream(&other, Some(&some_game)));
         assert!(!is_game_stream(
             &other,
             Some(&window(7, "World of Warcraft"))

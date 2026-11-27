@@ -23,13 +23,13 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use chronoclip_capture::{
-    AudioSourceKind, CaptureError, CaptureStatus, CudaDestination, GameWindow, WindowMatcher,
-    X11WindowCapture, find_window,
+    AudioSourceKind, CaptureError, CaptureStatus, CudaDestination, GameWindow, X11WindowCapture,
+    find_window,
 };
-use chronoclip_core::AudioMode;
 use chronoclip_core::disk::bitrate_bps;
 use chronoclip_core::segments::{clean_buffer_dir, retention_for_minutes};
 use chronoclip_core::settings::EncoderPreference;
+use chronoclip_core::{AudioMode, Game};
 use chronoclip_encode::{
     AacEncoder, EncoderConfig, NvencEncoder, Packet, SegmentWriter, StreamConfig,
 };
@@ -55,7 +55,8 @@ pub struct RecorderConfig {
     pub encoder: EncoderPreference,
     pub audio: AudioMode,
     pub microphone: bool,
-    pub matcher: WindowMatcher,
+    /// Games to look for, in priority order.
+    pub games: Vec<Game>,
 }
 
 impl RecorderConfig {
@@ -78,6 +79,8 @@ impl RecorderConfig {
 pub enum RecorderStatus {
     WaitingForWindow,
     Recording {
+        /// Name of the game being recorded.
+        game: String,
         width: u32,
         height: u32,
         fps: u32,
@@ -271,7 +274,7 @@ fn run(
     let mut last_game: Option<Option<u32>> = None;
     let mut window_gone = false;
     while !stop.load(Ordering::Relaxed) {
-        let window = match find_window(&config.matcher) {
+        let window = match find_window(&config.games) {
             Ok(Some(w)) if w.viewable => w,
             Ok(found) => {
                 if found.is_none() && last_game.is_some() {
@@ -290,6 +293,7 @@ fn run(
             }
         };
         tracing::info!(
+            game = %window.game.name,
             window = format!("0x{:x}", window.id),
             title = %window.title,
             pid = ?window.pid,
@@ -308,6 +312,7 @@ fn run(
             track.set_game(Some(GameWindow {
                 pid: window.pid,
                 title: window.title.clone(),
+                game: window.game.clone(),
             }));
         }
         session_id += 1;
@@ -317,6 +322,7 @@ fn run(
                 id: window.id,
                 size: (window.width, window.height),
                 session: session_id,
+                game: window.game.name.clone(),
             },
             stop,
             &sender,
@@ -389,6 +395,8 @@ struct Window {
     id: u64,
     size: (u32, u32),
     session: u64,
+    /// Name of the game it belongs to.
+    game: String,
 }
 
 /// The audio side of a session.
@@ -521,6 +529,7 @@ fn record_window(
             last_status = Instant::now();
             let (buffered, bytes) = buffer.stats();
             on_status(RecorderStatus::Recording {
+                game: window.game.clone(),
                 width,
                 height,
                 fps,

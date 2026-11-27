@@ -53,7 +53,7 @@ pub fn save_replay(buffer: &Arc<ReplayBuffer>, output_dir: &Path) -> Result<Save
     let pinned = buffer.pin_for_save().ok_or(if buffer.has_saved() {
         "Nothing new recorded since the last clip."
     } else {
-        "Nothing recorded yet. Start World of Warcraft and try again in a few seconds."
+        "Nothing recorded yet. Start your game and try again in a few seconds."
     })?;
     let last_seq = pinned.segments.last().map(|s| s.seq);
 
