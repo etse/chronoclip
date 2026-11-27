@@ -2,11 +2,11 @@
 Type=Application
 Name=Chronoclip
 GenericName=Game Replay Recorder
-Comment=Keep the last minutes of World of Warcraft and save them with a hotkey
+Comment=Keep the last minutes of your game and save them with a hotkey
 Exec=chronoclip
 Icon=io.github.etse.chronoclip
 Terminal=false
 Categories=AudioVideo;Video;Recorder;
-Keywords=replay;record;clip;wow;world of warcraft;shadowplay;instant replay;
+Keywords=replay;record;clip;game;gameplay;wow;world of warcraft;shadowplay;instant replay;
 StartupWMClass=chronoclip
 SingleMainWindow=true

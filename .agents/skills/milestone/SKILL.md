@@ -25,7 +25,7 @@ Goal: <what the maintainer gets, in one or two sentences>.
   - <evidence or finding, e.g. measurements, in-game result with date, maintainer's words>
 - [ ] Docs: README, architecture.md, INSTALL.md (if dependencies change), AGENTS.md (if commands/layout change)
 - [ ] Verified: <automated checks>
-- [ ] Verified in-game: <what the maintainer checks in WoW>
+- [ ] Verified in-game: <what the maintainer checks in WoW or other games>
 
 Out of scope: <what is explicitly not part of it, and where it goes instead>.
 ```

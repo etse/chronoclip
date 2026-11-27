@@ -1,4 +1,4 @@
-//! Chronoclip: replay buffer for World of Warcraft on Linux.
+//! Chronoclip: replay buffer for your games on Linux.
 //!
 //! Without a subcommand this starts the tray app (or shows the window of an already running
 //! instance). Subcommands talk to the running instance over a Unix socket.
@@ -30,7 +30,7 @@ use crate::controller::Controller;
 #[command(
     name = "chronoclip",
     version,
-    about = "Replay buffer for World of Warcraft on Linux"
+    about = "Replay buffer for your games on Linux"
 )]
 struct Cli {
     /// Start in the tray without showing the window (for autostart).

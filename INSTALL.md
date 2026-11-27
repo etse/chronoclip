@@ -58,7 +58,7 @@ Everything Chronoclip loads from the system is part of every Linux X11 desktop (
 |---|---|---|
 | `libcuda.so.1`, `libnvidia-encode.so.1` | part of the NVIDIA driver | GPU copy (CUDA) and encoding (NVENC) |
 | `libX11.so.6`, `libX11-xcb.so.1`, `libxcb.so.1`, `libXcursor.so.1`, `libXi.so.6`, `libxkbcommon.so.0`, `libxkbcommon-x11.so.0`, `libfontconfig.so.1` | `libx11-6`, `libx11-xcb1`, `libxcb1`, `libxcursor1`, `libxi6`, `libxkbcommon0`, `libxkbcommon-x11-0`, `libfontconfig1` | The window, tray and fonts (Slint / winit) |
-| `libXcomposite.so.1`, `libGL.so.1` (GLX) | `libxcomposite1`, `libgl1` | Finding and capturing the WoW window on the GPU, and the global hotkey |
+| `libXcomposite.so.1`, `libGL.so.1` (GLX) | `libxcomposite1`, `libgl1` | Finding and capturing the game window on the GPU, and the global hotkey |
 | `libpulse.so.0`, `libpulse-simple.so.0` | `libpulse0` (installed with PipeWire's `pipewire-pulse` or PulseAudio) | Recording sound through the PulseAudio API, which PipeWire provides, and playing the save chime |
 | `xdg-open` | `xdg-utils` | **Play** and **Show in folder** / **Open** buttons |
 | `libavcodec`, `libavformat`, `libavutil` | bundled with Chronoclip (`/usr/lib/chronoclip`) | Encoding and writing video files |

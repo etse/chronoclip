@@ -28,6 +28,11 @@ versions follow [Semantic Versioning](https://semver.org/).
 - **Games tab** lists the games Chronoclip records (World of Warcraft is built in), with
   **Remove** for one you added by mistake.
 
+### Changed
+
+- Chronoclip is now a replay buffer for your games, not only World of Warcraft: the app, its
+  About page, the menu entry and the package descriptions say so.
+
 ## [0.2.0] - 2026-11-27
 
 A new, modern dark look, in the style of the Battle.net launcher and Discord.

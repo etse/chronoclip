@@ -15,7 +15,7 @@ Keep it brief (under ~15 lines), then answer the maintainer's first message. If 
 
 ## Project
 
-**Chronoclip** is an open source replay buffer for World of Warcraft **on Linux** (ShadowPlay-style "Instant Replay"). WoW runs through Wine / Proton / Lutris.
+**Chronoclip** is an open source replay buffer for games **on Linux** (ShadowPlay-style "Instant Replay"). It was made for World of Warcraft (through Wine / Proton) and records any game since M8: it finds games by itself (your games, installed Steam games, catalog games in Wine prefixes, the built-in catalog `crates/chronoclip-core/data/games.toml`), asks "Record this game?" about unknown ones, and has a window picker.
 It continuously records gameplay to a rolling on-disk buffer. A configurable global hotkey (default `Ctrl+F9`) saves the last N minutes (5 to 45, default 10) as an MP4.
 
 The maintainer builds it for their own use as a Linux gamer and shares it with others. **Linux is the only target.** Windows and macOS are non-goals; don't add cross-platform abstractions for them.
@@ -45,7 +45,8 @@ Read before making non-trivial changes:
 ├── app/                       # Binary crate `chronoclip`: main, tray, hotkeys, IPC, CLI, UI wiring
 │   └── ui/                    # Slint UI files (*.slint), presentation only
 ├── crates/
-│   ├── chronoclip-core/       # Pure logic: settings, hotkeys, segment index, paths, IPC protocol
+│   ├── chronoclip-core/       # Pure logic: settings, hotkeys, segment index, paths, IPC protocol; games
+│   │                          #   (games, launchers, installed, detect, clips); data/games.toml = built-in catalog
 │   ├── chronoclip-capture/    # X11: window finding, capture (XComposite → GLX → CUDA), hotkey grab; audio (libpulse); Wayland later
 │   └── chronoclip-encode/     # FFmpeg: NVENC encoder (CUDA frames), AAC encoder, MPEG-TS segment writer, MP4 remux
 ├── packaging/
@@ -63,7 +64,7 @@ Read before making non-trivial changes:
 └── AGENTS.md
 ```
 
-Inside `app/src/`: `main.rs` (CLI + startup), `controller.rs` (handles commands from UI/tray/IPC/hotkey on any thread, owns the recorder and the hotkey, starts saves), `recorder.rs` (capture/encode thread + writer thread), `audio.rs` (audio tracks: capture → timeline → AAC, aligned to the video session clock), `buffer.rs` (`ReplayBuffer`: segment index shared by the writer and saves, pinning), `save.rs` (one save: pick segments → remux → MP4), `hotkey.rs` (picks the global hotkey backend for the session), `ui.rs` (Slint ↔ settings glue), `ipc.rs` (Unix socket, single instance), `tray.rs` (wires Slint's built-in `SystemTrayIcon`, defined in `ui/tray.slint`).
+Inside `app/src/`: `main.rs` (CLI + startup), `controller.rs` (handles commands from UI/tray/IPC/hotkey on any thread, owns the recorder and the hotkey, starts saves; keeps the games list, the installed-games scan and "Record this game?"), `recorder.rs` (capture/encode thread + writer thread; finds the game window and stays with it), `audio.rs` (audio tracks: capture → timeline → AAC, aligned to the video session clock), `buffer.rs` (`ReplayBuffer`: segment index shared by the writer and saves, pinning), `save.rs` (one save: pick segments → remux → MP4), `hotkey.rs` (picks the global hotkey backend for the session), `ui.rs` (Slint ↔ settings glue), `ipc.rs` (Unix socket, single instance), `tray.rs` (wires Slint's built-in `SystemTrayIcon`, defined in `ui/tray.slint`).
 
 ## Commands
 
@@ -73,7 +74,7 @@ System dependencies are listed in [INSTALL.md](INSTALL.md).
 cargo run -p chronoclip            # start the app (or show the running one)
 cargo run -p chronoclip -- save    # talk to the running instance: save | show | quit
 RUST_LOG=debug cargo run -p chronoclip
-CHRONOCLIP_WINDOW=glxgears cargo run -p chronoclip   # record any window by title instead of WoW
+CHRONOCLIP_WINDOW=glxgears cargo run -p chronoclip   # record only the window with this title (instead of the games)
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace

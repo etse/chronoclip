@@ -4,21 +4,24 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <name>Chronoclip</name>
-  <summary>Replay buffer for World of Warcraft on Linux</summary>
+  <summary>Replay buffer for your games on Linux</summary>
   <developer id="io.github.etse">
     <name>Chronoclip contributors</name>
   </developer>
   <description>
     <p>
-      Chronoclip keeps the last minutes of your World of Warcraft gameplay in a rolling
-      buffer and saves them as a video when you press a hotkey, like NVIDIA ShadowPlay's
-      Instant Replay, but native to Linux.
+      Chronoclip keeps the last minutes of your gameplay in a rolling buffer and saves them
+      as a video when you press a hotkey, like NVIDIA ShadowPlay's Instant Replay, but native
+      to Linux. Made for World of Warcraft first, it records any game: Steam and Proton,
+      Battle.net, Lutris, Heroic or native Linux games.
     </p>
     <ul>
       <li>Always-on replay buffer of 5 to 45 minutes, oldest footage deleted automatically</li>
       <li>Save with a global hotkey (Ctrl+F9 by default), the tray menu or the command line</li>
       <li>Saving takes seconds: the video is copied, not re-encoded</li>
       <li>GPU encoding with NVIDIA NVENC; the game keeps running smoothly</li>
+      <li>Finds your games by itself (installed Steam games, Battle.net games and many more), asks
+        about unknown ones, and saves each game's clips in its own folder</li>
       <li>Only the game's own sound by default, optional microphone track</li>
       <li>A chime and a notification tell you when a clip is saved</li>
     </ul>
@@ -58,6 +61,8 @@
   <keywords>
     <keyword>replay</keyword>
     <keyword>recorder</keyword>
+    <keyword>clip</keyword>
+    <keyword>game</keyword>
     <keyword>World of Warcraft</keyword>
   </keywords>
   <content_rating type="oars-1.1"/>

@@ -5,7 +5,7 @@
 # Usage: test-instance.sh <command> [args]
 #   start [--window TITLE] [--set 'key = value']... [--visible] [--home]
 #                      start an instance (hidden in the tray unless --visible).
-#                      --window: record the window whose title contains TITLE instead of WoW.
+#                      --window: record only the window whose title contains TITLE (not the games).
 #                      --set: a settings.toml line (overrides the test defaults below).
 #                      --home: fake HOME on disk, so paths show as ~/… (screenshots).
 #   player TITLE [WxH] [GRAPH]

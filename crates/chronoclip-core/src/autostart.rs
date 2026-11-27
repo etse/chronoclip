@@ -15,7 +15,7 @@ pub fn desktop_entry(exe: &Path) -> String {
         "[Desktop Entry]\n\
          Type=Application\n\
          Name=Chronoclip\n\
-         Comment=Replay buffer for World of Warcraft\n\
+         Comment=Replay buffer for your games\n\
          Exec={} --hidden\n\
          Icon={APP_ID}\n\
          Terminal=false\n\

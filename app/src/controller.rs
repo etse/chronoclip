@@ -23,7 +23,8 @@ use crate::recorder::{Recorder, RecorderConfig, RecorderStatus, Shared};
 use crate::save::{self, SavedClip};
 use crate::ui::{MainWindow, RecState, Tray, TrayState};
 
-/// Set to a window title (substring) to record that window instead of WoW. For testing.
+/// Set to a window title (substring) to record only that window instead of the games. For
+/// testing.
 const WINDOW_ENV: &str = "CHRONOCLIP_WINDOW";
 
 #[derive(Default)]

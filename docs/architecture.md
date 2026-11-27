@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: X11 + NVIDIA capture (M2), saving replays (M3) and audio (M4) are implemented; Wayland and VAAPI are still design. Update this document as the implementation lands.
+> Status: X11 + NVIDIA capture (M2), saving replays (M3), audio (M4) and recording any game (M8) are implemented; Wayland and VAAPI are still design. Update this document as the implementation lands.
 
 ## Goals
 
@@ -43,7 +43,7 @@
 | `AudioTimeline` | `chronoclip-core` | Places captured chunks on the session clock: silence for gaps, drops overlap, corrects device clock drift. |
 | Audio tracks | `app/` (`audio.rs`) | `AudioSink` per track: timeline → `AacEncoder` → writer, timestamps relative to the current window session. |
 | `Encoder` / `SegmentWriter` | `chronoclip-encode` | FFmpeg wrappers. NVENC with a closed GOP aligned to segment length so every segment starts with an IDR frame; AAC (FFmpeg's built-in encoder). The segment writer cuts on video keyframes and writes the audio streams into the same files. |
-| App | `app/` | Slint UI, tray icon, global hotkey, single-instance IPC + CLI, lifecycle (start/stop, WoW detection), desktop notifications. |
+| App | `app/` | Slint UI, tray icon, global hotkey, single-instance IPC + CLI, lifecycle (start/stop, finding the game: see [Finding the game](#finding-the-game)), desktop notifications. |
 
 ### Linux integration
 
@@ -51,8 +51,8 @@ Implementation order follows the reference setup (Linux Mint Cinnamon on X11, NV
 
 | Concern | X11 (first) | Wayland (later) |
 |---|---|---|
-| Video capture | `XCompositeRedirectWindow` on the WoW window → named pixmap → `GLX_EXT_texture_from_pixmap` texture → drawn with a full-screen-triangle shader into our own RGBA8 texture (NVIDIA can't attach pixmap textures to an FBO, so no blit) → registered with CUDA (`cuGraphicsGLRegisterImage`) → `cuMemcpy2D` into the encoder's CUDA frame → NVENC. Frames never touch the CPU. **Copy mode:** NVIDIA refuses `glXCreatePixmap` (BadAlloc) on the backing pixmap of windows rendered via Vulkan/DXVK (Wine/Proton games, Battle.net, Chrome); for those the X server first copies the window into a pixmap we own (`XCopyArea`, a server-side GPU copy) and that pixmap is bound instead. A resize or minimize ends the session; the recorder then starts a new one at the new size. | xdg-desktop-portal ScreenCast (`ashpd`) → PipeWire stream, DMA-BUF when available. Persist the portal **restore token** so the user picks the WoW window only once. |
-| Audio | PulseAudio client API (`libpulse.so.0`, loaded at runtime), served by `pipewire-pulse`: the WoW stream alone via a monitor stream (`pa_stream_set_monitor_stream`), or `@DEFAULT_MONITOR@` for all sound; microphone from the default source | same (the portal is only needed for video) |
+| Video capture | `XCompositeRedirectWindow` on the game window → named pixmap → `GLX_EXT_texture_from_pixmap` texture → drawn with a full-screen-triangle shader into our own RGBA8 texture (NVIDIA can't attach pixmap textures to an FBO, so no blit) → registered with CUDA (`cuGraphicsGLRegisterImage`) → `cuMemcpy2D` into the encoder's CUDA frame → NVENC. Frames never touch the CPU. **Copy mode:** NVIDIA refuses `glXCreatePixmap` (BadAlloc) on the backing pixmap of windows rendered via Vulkan/DXVK (Wine/Proton games, Battle.net, Chrome); for those the X server first copies the window into a pixmap we own (`XCopyArea`, a server-side GPU copy) and that pixmap is bound instead. A resize or minimize ends the session; the recorder then starts a new one at the new size. | xdg-desktop-portal ScreenCast (`ashpd`) → PipeWire stream, DMA-BUF when available. Persist the portal **restore token** so the user picks the game window only once. |
+| Audio | PulseAudio client API (`libpulse.so.0`, loaded at runtime), served by `pipewire-pulse`: the game's stream alone via a monitor stream (`pa_stream_set_monitor_stream`), or `@DEFAULT_MONITOR@` for all sound; microphone from the default source | same (the portal is only needed for video) |
 | Encoder | NVENC (NVIDIA, via FFmpeg `h264_nvenc` / `hevc_nvenc` / `av1_nvenc` with CUDA hw frames), VAAPI (AMD/Intel) | same |
 | Global hotkey | `XGrabKey` on the root window, once per Caps Lock / Num Lock combination; own code in `chronoclip-capture` (`X11Hotkey`) with its own thread and X connection. A key taken by another client (`BadAccess`) is reported in the UI | GlobalShortcuts portal (KDE Plasma 6, GNOME 48+, Hyprland). Fallback: user binds `chronoclip save` in their desktop settings |
 | Tray | Slint `SystemTrayIcon` (StatusNotifierItem); GNOME needs the AppIndicator extension | same |
@@ -87,7 +87,17 @@ Stream-copy concatenation into MP4 is I/O bound and takes seconds even for 45 mi
 ### Capture target
 **Borderless windowed is the primary supported mode** (it's what the maintainer uses, and it gives a stable window size and painless alt-tab). Exclusive fullscreen is best-effort.
 
-Prefer capturing the WoW window over the full monitor. On X11, find it automatically: Proton/Wine windows for `Wow.exe` (WM_CLASS `wow.exe` / `steam_app_*`, or `_NET_WM_PID` → `/proc/<pid>/cmdline` containing `Wow.exe`); let the user pick a window manually if detection fails. The game's graphics API (DX12 → vkd3d-proton → Vulkan) doesn't matter, because we capture the X11 window, not the swapchain. On Wayland the user picks the window in the portal dialog the first time; the restore token remembers it.
+Chronoclip captures the game's window, not the monitor. The game's graphics API (DX12 → vkd3d-proton → Vulkan, OpenGL, …) doesn't matter, because we capture the X11 window, not the swapchain. Which window is the game: see [Finding the game](#finding-the-game). On Wayland the user will pick the window in the portal dialog the first time; the restore token remembers it.
+
+## Finding the game
+
+Since M8 Chronoclip records any game, not only WoW. Everything here only reads what the X server and `/proc` already expose about a window (title, WM_CLASS, `_NET_WM_PID` → `/proc/<pid>/{comm,cmdline}`, a few launcher variables from `/proc/<pid>/environ`) and the launchers' own files; never the game's memory (hard rule 1).
+
+- **Games list** (`chronoclip-core::games`), in priority order: the user's games (picked windows, "Record"), the games **installed** on this computer (`installed`: every Steam game from the `appmanifest` files of all libraries, and catalog games whose executable is in a Wine prefix of Faugus, Lutris, Heroic, Bottles, Steam `compatdata`, `~/.wine` or `~/Games`), then the **built-in catalog** (`data/games.toml`, compiled in; 176 games, checked by a unit test in CI). Games on the user's "Not recorded" list are left out. A game matches a window by executable name (WM_CLASS, process name, command line; Wine/Proton show the Windows `.exe`), by **Steam app id** (Proton's WM_CLASS `steam_app_<id>` or `SteamAppId`), or as a last resort by title.
+- **Names** come from the launchers (`launchers`): Steam manifests, Heroic's library caches (`HEROIC_APP_NAME`), Lutris's `GAME_NAME`, Faugus's `games.json`. A game started from a store launcher inherits that launcher entry's environment (WoW from the Battle.net entry), so store launcher names are ignored and Faugus entries must match the executable.
+- **Unknown games** (`detect`): a window in no list that scores ≥ 2 (Windows program +2, `_NET_WM_BYPASS_COMPOSITOR = 1` +2, fullscreen +1; 0 for known launchers, browsers, chat apps, terminals, video players and windows under 640×360) gets "Record this game?" on Home and in a notification. *Not this one* puts it on the "Not recorded" list.
+- **Staying with the game**: the recorder shares a "current window" with the controller; it prefers that window and only looks again when it closes, so starting a second game doesn't switch. The window picker (and "Record") point it elsewhere and restart the recorder (the buffer is cleared: a clip never mixes two games). The games list is shared too, so it can change (a game added or switched off, a new install found) without a restart; only a session whose game left the list ends.
+- **Clips** go to a folder per game, named after the game (`clips::safe_file_name`).
 
 ## Disk usage estimate
 
@@ -177,14 +187,14 @@ Clips decode without errors in FFmpeg and play in mpv; `moov` is first. Not chec
 ## Decisions made in M4
 
 - **PulseAudio client API instead of the native PipeWire API.** `pipewire-pulse` is installed on every desktop that runs PipeWire, the API records a single application's stream (monitor streams), and `libpulse.so.0` can be loaded at runtime like X11 and CUDA, so no new build dependency (the `pipewire` crate needs `libpipewire-0.3-dev` + bindgen). It also works on plain PulseAudio systems. The native API can come later behind `AudioCapture` if needed.
-- **Game stream found by process id or name**: the same process as the captured window, a WoW executable name, or the application name "World of Warcraft" / the window title (what native-PipeWire Wine streams carry; verified in-game). Falls back to all sound rather than silence, so a clip never loses sound just because detection failed; the log then lists the streams it saw.
+- **Game stream found by process id or name**: the same process as the captured window, one of the game's executables, or an application name starting with the game's name / equal to the window title (since M8 for any game; before, WoW only) (what native-PipeWire Wine streams carry; verified in-game). Falls back to all sound rather than silence, so a clip never loses sound just because detection failed; the log then lists the streams it saw.
 - **AAC in the segments, not Opus:** MP4 + AAC plays everywhere (browsers, Discord, phones) without remuxing again.
 - **Arrival-time timestamps with drift correction** instead of resampling: simple and in sync within a frame; the cost is a short cut or silence every half minute or so on devices whose clock is far off. Resampling can replace it if that turns out audible.
 - **Microphone as a separate track**, not mixed into the game track: the clip keeps both editable. Discord and browsers only play track 1, so the mic isn't heard there (mixing is not planned for M4).
 
 ## Decisions made in M5
 
-- **Chime as the in-game feedback**, notifications second: Cinnamon (and most desktops) hide notifications over fullscreen windows, and borderless WoW counts as fullscreen. The chime is synthesized, so there is no sound file to ship or license. It goes to the default output, so *All sound* records it.
+- **Chime as the in-game feedback**, notifications second: Cinnamon (and most desktops) hide notifications over fullscreen windows, and borderless games count as fullscreen. The chime is synthesized, so there is no sound file to ship or license. It goes to the default output, so *All sound* records it.
 - **`notify-rust` pinned to 4.18**: 4.19 moved to zbus 6, while Slint (accesskit) uses zbus 5; staying on 4.18 keeps one zbus in the binary.
 - **Autostart is the file, not a setting**: the switch reads whether `~/.config/autostart/chronoclip.desktop` exists, so it can't disagree with what the desktop does. Entries without our `X-Chronoclip-Autostart` marker are never rewritten.
 - **Tray state from the recorder status**: three pre-rendered icons (red, grey, amber dot), switched in `tray.slint`.
@@ -210,7 +220,16 @@ Clips decode without errors in FFmpeg and play in mpv; `moov` is first. Not chec
 - **Inter** (OFL) and **Lucide** icons (ISC) are bundled in the binary (~1.4 MB); their license texts are added to `THIRD-PARTY-LICENSES.txt`.
 - **Pulsing record dot** uses `animation-tick()` only while recording and the window is visible: about +1.2 % of one core while visible, nothing when hidden.
 
+## Decisions made in M8
+
+- **Games are data, not code**: WoW moved into the catalog `data/games.toml` like every other game. TOML because the settings use it already, it has comments (each entry names its source) and pull requests diff cleanly. Parsing is strict (a misspelled key fails the test), unlike the settings file.
+- **Steam app id before executable names**: Steam and Proton tag every game's window with it, so one checked number recognizes a Steam game. The catalog's Steam entries come from Steam's most played chart and popular titles, each checked against the store API (2026-11-27); executables only from installs.
+- **Installed games are scanned, not stored** (startup and when the Games tab opens, ~40 ms for 19 games): an uninstalled game disappears by itself, and nothing has to be kept in sync.
+- **Launchers' data from their files and environment variables**, not their databases: Lutris's `GAME_NAME` avoids reading its SQLite database; Heroic's library caches are JSON. Lutris and Heroic follow their source code; neither was installed on the maintainer's computer.
+- **Ask, don't guess**: unknown windows that look like games are only recorded after "Record". The Battle.net launcher looks like a Proton game in every way, so launchers are listed explicitly. GameMode is not used (only knows games started with `gamemoderun`), nor the NVIDIA process list (every desktop app uses the GPU).
+- **The games list is shared with the recorder** instead of being part of its settings: changing it never restarts the recorder, so the buffer isn't lost.
+
 ## Open questions
 
-- Cinnamon "unredirects" fullscreen windows for performance. WoW's borderless "Windowed (Fullscreen)" mode may still be flagged `_NET_WM_STATE_FULLSCREEN` and get unredirected. Our own `XCompositeRedirectWindow` should keep an off-screen pixmap regardless; verify this in M2. Exclusive fullscreen is lower priority.
+- Cinnamon "unredirects" fullscreen windows for performance. WoW's (or any game's) borderless "Windowed (Fullscreen)" mode may still be flagged `_NET_WM_STATE_FULLSCREEN` and get unredirected. Our own `XCompositeRedirectWindow` should keep an off-screen pixmap regardless; verify this in M2. Exclusive fullscreen is lower priority.
 - Wayland zero-copy: PipeWire DMA-BUF → VAAPI surface import; NVIDIA (DMA-BUF → CUDA → NVENC).

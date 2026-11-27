@@ -1,6 +1,6 @@
 //! Feedback after a save that you notice even in-game: a chime and a desktop notification.
 //!
-//! Cinnamon hides notifications over fullscreen windows by default, and borderless WoW counts
+//! Cinnamon hides notifications over fullscreen windows by default, and borderless games count
 //! as fullscreen, so the chime is what tells you a save worked while playing.
 
 use std::path::{Path, PathBuf};
