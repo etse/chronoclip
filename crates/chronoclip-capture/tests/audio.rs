@@ -125,7 +125,7 @@ fn falls_back_to_all_sound_without_game_stream() {
 #[test]
 #[ignore = "needs World of Warcraft running with sound"]
 fn finds_running_wow_stream() {
-    let window = chronoclip_capture::find_window(&[Game::world_of_warcraft()])
+    let window = chronoclip_capture::find_window(&[Game::world_of_warcraft()], None)
         .expect("X11")
         .expect("World of Warcraft is not running");
     let (tx, rx) = channel();

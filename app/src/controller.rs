@@ -118,6 +118,12 @@ pub struct Controller {
     last_clip: Arc<Mutex<Option<PathBuf>>>,
     alerts: Arc<Alerts>,
     save_sound: Arc<AtomicBool>,
+    /// A game just picked in the window picker: kept if it starts recording, removed again
+    /// (through the window's `game-failed`) if recording it fails first.
+    trial: Arc<Mutex<Option<String>>>,
+    /// The window being recorded (or picked to be): the recorder stays with it until it
+    /// closes, also across restarts for changed settings. See [`Recorder::start`].
+    current_window: Arc<Mutex<Option<u64>>>,
 }
 
 impl Controller {
@@ -141,6 +147,45 @@ impl Controller {
             last_clip: Arc::new(Mutex::new(None)),
             alerts,
             save_sound: Arc::new(AtomicBool::new(true)),
+            trial: Arc::new(Mutex::new(None)),
+            current_window: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    /// Watch whether `game` (just added from the window picker) can be recorded. Call before
+    /// applying the settings that add it.
+    pub fn try_game(&self, game: &str) {
+        *self.trial.lock().unwrap_or_else(|e| e.into_inner()) = Some(game.to_owned());
+    }
+
+    /// Record window `id` (picked by the user) instead of the current one. Returns false if
+    /// it is already the one being recorded. The switch happens when the recorder restarts:
+    /// through [`Self::apply_settings`] if the settings change too, else [`Self::restart_recorder`].
+    pub fn prefer_window(&self, id: u64) -> bool {
+        let mut current = self
+            .current_window
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let changed = *current != Some(id);
+        *current = Some(id);
+        changed
+    }
+
+    /// The window being recorded (or about to be).
+    pub fn current_window(&self) -> Option<u64> {
+        *self
+            .current_window
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Restart the recorder with the same settings (drops the buffer: a clip never mixes two
+    /// windows).
+    pub fn restart_recorder(&self) {
+        let mut slot = self.recorder.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(config) = slot.config.clone() {
+            slot.recorder = None;
+            self.start_recorder(&mut slot, config);
         }
     }
 
@@ -346,15 +391,22 @@ impl Controller {
 
         // Stops the old recorder and clears its buffer. A running save finishes first.
         slot.recorder = None;
+        self.start_recorder(&mut slot, config);
+    }
+
+    fn start_recorder(&self, slot: &mut RecorderSlot, config: RecorderConfig) {
         let window = self.window.clone();
         let tray = self.tray.get().cloned();
         let waiting_for = waiting_for(&config.games);
         let last_save = Arc::clone(&self.last_save);
-        slot.recorder = Some(Recorder::start(config.clone(), move |status| {
+        let trial = Arc::clone(&self.trial);
+        let current = Arc::clone(&self.current_window);
+        slot.recorder = Some(Recorder::start(config.clone(), current, move |status| {
+            check_trial(&trial, &status, &window);
             let (text, recording) = status_text(&status, &waiting_for);
             let state = match status {
                 RecorderStatus::Recording { .. } => TrayState::Recording,
-                RecorderStatus::Error(_) => TrayState::Error,
+                RecorderStatus::Error(_) | RecorderStatus::Failed { .. } => TrayState::Error,
                 RecorderStatus::WaitingForWindow | RecorderStatus::Stopped => TrayState::Waiting,
             };
             let mut tray_text = format!("Chronoclip: {text}");
@@ -402,11 +454,40 @@ struct StatusView {
     buffer_size: String,
 }
 
-/// What the app waits for: the game's name if there is only one, else "your game".
+/// Resolve a trial (see [`Controller::try_game`]): recording the game ends it; a failure
+/// first tells the window, which removes the game again.
+fn check_trial(
+    trial: &Mutex<Option<String>>,
+    status: &RecorderStatus,
+    window: &slint::Weak<MainWindow>,
+) {
+    let mut trial = trial.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(name) = trial.as_deref() else { return };
+    match status {
+        RecorderStatus::Recording { game, .. } if game == name => {
+            tracing::info!(%game, "picked game records fine");
+            *trial = None;
+        }
+        RecorderStatus::Failed { game, error } if game == name => {
+            *trial = None;
+            let (game, error) = (game.clone(), error.clone());
+            let _ = window.upgrade_in_event_loop(move |w| {
+                w.invoke_game_failed(game.into(), error.into());
+            });
+        }
+        _ => {}
+    }
+}
+
+/// The games the app looks for, for the waiting text: "World of Warcraft",
+/// "World of Warcraft and Satisfactory", "A, B, C and 2 more".
 fn waiting_for(games: &[Game]) -> String {
-    match games {
-        [game] => game.name.clone(),
-        _ => "your game".to_owned(),
+    let names: Vec<&str> = games.iter().map(|g| g.name.as_str()).collect();
+    match names.as_slice() {
+        [] => String::new(),
+        [one] => (*one).to_owned(),
+        [first @ .., last] if names.len() <= 3 => format!("{} and {last}", first.join(", ")),
+        _ => format!("{} and {} more", names[..3].join(", "), names.len() - 3),
     }
 }
 
@@ -422,8 +503,11 @@ fn status_view(status: &RecorderStatus, waiting_for: &str) -> StatusView {
     match status {
         RecorderStatus::WaitingForWindow => idle(
             RecState::Waiting,
-            format!("Waiting for {waiting_for}"),
-            "Start the game: recording begins by itself.".into(),
+            "Waiting for a game".into(),
+            format!(
+                "Looking for {waiting_for}: recording begins by itself when one starts. \
+                 Another game? Start it and choose its window."
+            ),
         ),
         RecorderStatus::Recording {
             game,
@@ -463,6 +547,11 @@ fn status_view(status: &RecorderStatus, waiting_for: &str) -> StatusView {
             }
         }
         RecorderStatus::Error(e) => idle(RecState::Error, "Can't record".into(), e.clone()),
+        RecorderStatus::Failed { game, error } => idle(
+            RecState::Error,
+            format!("Can't record {game}"),
+            error.clone(),
+        ),
         RecorderStatus::Stopped => idle(RecState::Waiting, "Stopped".into(), String::new()),
     }
 }
@@ -477,7 +566,7 @@ fn capitalize(s: &str) -> String {
 
 fn status_text(status: &RecorderStatus, waiting_for: &str) -> (String, bool) {
     match status {
-        RecorderStatus::WaitingForWindow => (format!("Waiting for {waiting_for}…"), false),
+        RecorderStatus::WaitingForWindow => (format!("Waiting for a game ({waiting_for})…"), false),
         RecorderStatus::Recording {
             game,
             width,
@@ -506,6 +595,31 @@ fn status_text(status: &RecorderStatus, waiting_for: &str) -> (String, bool) {
             (text, true)
         }
         RecorderStatus::Error(e) => (e.clone(), false),
+        RecorderStatus::Failed { game, error } => (format!("Can't record {game}: {error}"), false),
         RecorderStatus::Stopped => ("Stopped".into(), false),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn waiting_text_lists_the_games() {
+        let games =
+            |names: &[&str]| -> Vec<Game> { names.iter().map(|n| Game::by_title(n)).collect() };
+        assert_eq!(
+            waiting_for(&games(&["World of Warcraft"])),
+            "World of Warcraft"
+        );
+        assert_eq!(
+            waiting_for(&games(&["WoW", "Satisfactory"])),
+            "WoW and Satisfactory"
+        );
+        assert_eq!(waiting_for(&games(&["A", "B", "C"])), "A, B and C");
+        assert_eq!(
+            waiting_for(&games(&["A", "B", "C", "D", "E"])),
+            "A, B, C and 2 more"
+        );
     }
 }

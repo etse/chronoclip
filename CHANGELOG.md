@@ -6,6 +6,16 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Record other games:** *Choose window* on Home (or *Add a game window…* on the new **Games** tab)
+  lists your open windows; pick the game and Chronoclip records it, now and whenever it runs.
+  A window that can't be recorded isn't added; Home says why.
+- Chronoclip stays with the game you started, even when you start another one. To switch, use
+  *Choose window*.
+- **Games tab** lists the games Chronoclip records (World of Warcraft is built in), with
+  **Remove** for one you added by mistake.
+
 ## [0.2.0] - 2026-11-27
 
 A new, modern dark look, in the style of the Battle.net launcher and Discord.

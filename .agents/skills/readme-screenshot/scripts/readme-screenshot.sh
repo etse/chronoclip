@@ -50,7 +50,7 @@ sleep 1
 "$T" screenshot "$out/chronoclip-window.png"
 
 read -r x y < <(xwininfo -id "$wid" | awk '/Absolute upper-left X/{x=$4} /Absolute upper-left Y/{y=$4} END {print x, y}')
-click $((x + 283)) $((y + 24))                       # "Settings" tab in the title bar
+click $((x + 355)) $((y + 24))                       # "Settings" tab in the title bar (Home · Games · Settings · About)
 sleep 1
 "$T" screenshot "$out/chronoclip-settings.png"
 file "$out"/chronoclip-{window,settings}.png

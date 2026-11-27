@@ -1,0 +1,181 @@
+// Games page: the games Chronoclip records (World of Warcraft built in, games you added),
+// with Remove, and the button that opens the window picker.
+
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Button, ButtonKind, Card, Icon } from "components.slint";
+
+/// One game in the games list.
+export struct GameRow {
+    name: string,
+    // How it's recognized, e.g. "eldenring.exe".
+    detail: string,
+    // World of Warcraft: always there, can't be removed.
+    builtin: bool,
+}
+
+component GameItem {
+    in property <GameRow> game;
+    callback remove();
+
+    min-height: 60px;
+
+    HorizontalLayout {
+        padding-left: Theme.space-l;
+        padding-right: Theme.space-m;
+        spacing: Theme.space-l;
+
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 36px;
+                height: 36px;
+                border-radius: Theme.radius;
+                background: root.game.builtin ? Theme.accent-soft : Theme.surface-raised;
+                Icon {
+                    source: @image-url("icons/lucide/gamepad-2.svg");
+                    color: root.game.builtin ? Theme.accent : Theme.text-muted;
+                    size: 18px;
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.game.name;
+                color: Theme.text;
+                font-size: Theme.font-body;
+                font-weight: 600;
+                overflow: elide;
+            }
+
+            Text {
+                text: root.game.detail;
+                color: Theme.text-faint;
+                font-size: Theme.font-small;
+                overflow: elide;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            if root.game.builtin: Rectangle {
+                height: 22px;
+                width: builtin-text.preferred-width + 16px;
+                border-radius: 11px;
+                background: Theme.surface-raised;
+                border-width: 1px;
+                border-color: Theme.border;
+                builtin-text := Text {
+                    text: "Built in";
+                    color: Theme.text-muted;
+                    font-size: Theme.font-small;
+                    font-weight: 600;
+                }
+            }
+            if !root.game.builtin: Button {
+                text: "Remove";
+                kind: ButtonKind.ghost;
+                has-icon: true;
+                icon: @image-url("icons/lucide/x.svg");
+                height-hint: 30px;
+                font-size: Theme.font-small;
+                clicked => {
+                    root.remove();
+                }
+            }
+        }
+    }
+}
+
+export component GamesPage {
+    in property <[GameRow]> games;
+    // Result of the last add/remove, or an error.
+    in property <string> message;
+    in property <bool> message-is-error;
+    callback add-game();
+    callback remove-game(int);
+
+    ScrollView {
+        HorizontalLayout {
+            alignment: center;
+            VerticalLayout {
+                max-width: 780px;
+                padding: Theme.space-xl;
+                spacing: Theme.space-l;
+                alignment: start;
+
+                HorizontalLayout {
+                    spacing: Theme.space-l;
+                    VerticalLayout {
+                        spacing: 2px;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: "Games";
+                            color: Theme.text;
+                            font-size: Theme.font-title;
+                            font-weight: 700;
+                        }
+
+                        Text {
+                            text: "Chronoclip records the game you start and stays with it until it closes, even if you start another. To switch, use Choose window on Home.";
+                            color: Theme.text-faint;
+                            font-size: Theme.font-small;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        Button {
+                            text: "Add a game window…";
+                            kind: ButtonKind.primary;
+                            has-icon: true;
+                            icon: @image-url("icons/lucide/app-window.svg");
+                            clicked => {
+                                root.add-game();
+                            }
+                        }
+                    }
+                }
+
+                if root.message != "": Text {
+                    text: root.message;
+                    color: root.message-is-error ? Theme.danger : Theme.text-muted;
+                    font-size: Theme.font-small;
+                    wrap: word-wrap;
+                }
+
+                Card {
+                    VerticalLayout {
+                        padding-top: Theme.space-xs;
+                        padding-bottom: Theme.space-xs;
+                        for game[index] in root.games: VerticalLayout {
+                            if index > 0: Rectangle {
+                                height: 1px;
+                                background: Theme.border;
+                                opacity: 0.6;
+                            }
+                            GameItem {
+                                game: game;
+                                remove => {
+                                    root.remove-game(index);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if root.games.length <= 1: Text {
+                    text: "Only World of Warcraft so far. Start another game, then add its window here or with Choose window on Home.";
+                    color: Theme.text-faint;
+                    font-size: Theme.font-small;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+}

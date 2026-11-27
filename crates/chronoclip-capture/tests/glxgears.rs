@@ -34,7 +34,7 @@ fn captures_glxgears_window() -> Result<(), Box<dyn std::error::Error>> {
     let games = [chronoclip_core::Game::by_title("glxgears")];
     let deadline = Instant::now() + Duration::from_secs(5);
     let window = loop {
-        if let Some(w) = find_window(&games)? {
+        if let Some(w) = find_window(&games, None)? {
             break w;
         }
         assert!(Instant::now() < deadline, "glxgears window did not appear");

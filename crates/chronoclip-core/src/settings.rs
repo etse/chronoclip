@@ -206,6 +206,17 @@ impl Settings {
         self
     }
 
+    /// Add a game unless an existing one (or World of Warcraft) already covers it. Returns the
+    /// name of the game that now records it: the new one, or the existing one.
+    pub fn add_game(&mut self, game: Game) -> String {
+        if let Some(existing) = self.all_games().into_iter().find(|g| g.covers(&game)) {
+            return existing.name;
+        }
+        let name = game.name.clone();
+        self.games.push(game);
+        name
+    }
+
     /// Every game to look for, in priority order: World of Warcraft, then the user's games.
     pub fn all_games(&self) -> Vec<Game> {
         std::iter::once(Game::world_of_warcraft())
@@ -324,7 +335,13 @@ mod tests {
             ..Settings::default()
         };
         assert!(matches!(s.validate(), Err(SettingsError::InvalidGame(n)) if n == "Broken"));
-        assert_eq!(s.sanitized().games, [elden]);
+        assert_eq!(s.sanitized().games, std::slice::from_ref(&elden));
+
+        let mut s = Settings::default();
+        assert_eq!(s.add_game(elden.clone()), "Elden Ring");
+        assert_eq!(s.add_game(elden.clone()), "Elden Ring");
+        assert_eq!(s.add_game(Game::world_of_warcraft()), "World of Warcraft");
+        assert_eq!(s.games, [elden]);
         Ok(())
     }
 

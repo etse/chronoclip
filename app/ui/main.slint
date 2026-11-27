@@ -4,12 +4,16 @@ import "fonts/Inter-Bold.ttf";
 import { Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { SettingsPage } from "settings.slint";
+import { GameRow, GamesPage } from "games.slint";
+import { WindowPicker, WindowRow } from "picker.slint";
 import { AboutPage } from "about.slint";
 import { TitleBar } from "titlebar.slint";
 import { HomePage, RecState } from "home.slint";
 
 export { Tray, TrayState } from "tray.slint";
 export { RecState } from "home.slint";
+export { GameRow } from "games.slint";
+export { WindowRow } from "picker.slint";
 
 /// Window edge or corner the user drags to resize the frameless window.
 export enum ResizeEdge { north, south, east, west, north-east, north-west, south-east, south-west }
@@ -42,6 +46,15 @@ export component MainWindow inherits Window {
     in property <string> last-clip-detail;
     callback play-last-clip();
     callback show-last-clip();
+    // Games (Settings) and the window picker.
+    in property <[GameRow]> games;
+    in property <[WindowRow]> open-windows;
+    in-out property <bool> picker-open: false;
+    callback choose-window();
+    callback pick-window(int);
+    callback remove-game(int);
+    // A game just picked can't be recorded: Rust removes it again.
+    callback game-failed(string, string);
     callback close-window();
     callback start-resize(ResizeEdge);
     callback open-url(string);
@@ -123,11 +136,15 @@ export component MainWindow inherits Window {
             saving: root.saving;
             save-text: root.save-text;
             save-is-error: root.save-is-error;
+            notice: root.message-is-error ? root.message : "";
             has-last-clip: root.has-last-clip;
             last-clip-name: root.last-clip-name;
             last-clip-detail: root.last-clip-detail;
             save-replay => {
                 root.save-replay();
+            }
+            choose-window => {
+                root.choose-window();
             }
             play-last-clip => {
                 root.play-last-clip();
@@ -137,7 +154,19 @@ export component MainWindow inherits Window {
             }
         }
 
-        if root.current-tab == 1: SettingsPage {
+        if root.current-tab == 1: GamesPage {
+            games: root.games;
+            message: root.message;
+            message-is-error: root.message-is-error;
+            add-game => {
+                root.choose-window();
+            }
+            remove-game(index) => {
+                root.remove-game(index);
+            }
+        }
+
+        if root.current-tab == 2: SettingsPage {
             hotkey <=> root.hotkey;
             buffer-minutes <=> root.buffer-minutes;
             fps <=> root.fps;
@@ -174,11 +203,29 @@ export component MainWindow inherits Window {
             }
         }
 
-        if root.current-tab == 2: AboutPage {
+        if root.current-tab == 3: AboutPage {
             version: root.version;
             open-url(url) => {
                 root.open-url(url);
             }
+        }
+    }
+
+    if root.picker-open: WindowPicker {
+        y: root.custom-title-bar ? Theme.title-bar-height : 0;
+        height: root.height - self.y;
+        windows: root.open-windows;
+        init => {
+            self.focus();
+        }
+        pick(index) => {
+            root.pick-window(index);
+        }
+        refresh => {
+            root.choose-window();
+        }
+        close => {
+            root.picker-open = false;
         }
     }
 

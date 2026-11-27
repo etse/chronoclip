@@ -28,7 +28,7 @@ pub use error::CaptureError;
 pub use glx::{CaptureStatus, X11WindowCapture};
 pub use hotkey::{HotkeyError, X11Hotkey};
 pub use sound::play_sound;
-pub use window::{WindowInfo, find_window};
+pub use window::{OpenWindow, WindowInfo, find_window, list_windows};
 
 /// Destination for one captured frame: an `RGB0` image in CUDA device memory.
 #[derive(Debug, Clone, Copy)]

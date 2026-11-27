@@ -6,9 +6,11 @@ use std::process::Command;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use chronoclip_capture::{OpenWindow, list_windows};
 use chronoclip_core::disk::{
     estimate_buffer_bytes, format_gb, nominal_bitrate_mbps, tmpfs_warning,
 };
+use chronoclip_core::games::find_game;
 use chronoclip_core::settings::{
     AudioMode, DEFAULT_FPS, EncoderPreference, SUPPORTED_FPS, Settings,
 };
@@ -22,7 +24,7 @@ use crate::controller::Controller;
 mod generated {
     slint::include_modules!();
 }
-pub use generated::{MainWindow, RecState, ResizeEdge, Tray, TrayState};
+pub use generated::{GameRow, MainWindow, RecState, ResizeEdge, Tray, TrayState, WindowRow};
 
 fn encoder_label(encoder: EncoderPreference) -> &'static str {
     match encoder {
@@ -62,6 +64,8 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
     let paths = Rc::new(paths);
     let save_controller = Arc::clone(&controller);
     let clip_controller = Arc::clone(&controller);
+    let trial_controller = Arc::clone(&controller);
+    let picker_controller = Arc::clone(&controller);
 
     window.set_version(env!("CARGO_PKG_VERSION").into());
     window.set_status_text("Starting…".into());
@@ -96,17 +100,13 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
     // Settings are saved and applied as soon as a field changes (text fields when editing
     // is done). `current` is what is saved, so unchanged fields don't restart anything.
     let current = Rc::new(RefCell::new(settings.clone()));
-    let apply = {
+    // Save, show and apply `settings` if they differ from `current`; `done` is the message.
+    let commit = {
         let weak = window.as_weak();
         let paths = Rc::clone(&paths);
-        move |done: &str| {
+        let current = Rc::clone(&current);
+        move |settings: Settings, done: &str| {
             let Some(window) = weak.upgrade() else { return };
-            // Games aren't on this page; keep them (also on "Reset to defaults").
-            let games = current.borrow().games.clone();
-            let settings = match read_settings(&window, &paths, games) {
-                Ok(s) => s,
-                Err(e) => return set_message(&window, &e, true),
-            };
             if settings == *current.borrow() {
                 // Nothing changed; clear an error from an earlier invalid entry.
                 if window.get_message_is_error() {
@@ -124,7 +124,133 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
             controller.apply_settings(&settings);
         }
     };
+    let commit = Rc::new(commit);
+    let apply = {
+        let weak = window.as_weak();
+        let paths = Rc::clone(&paths);
+        let current = Rc::clone(&current);
+        let commit = Rc::clone(&commit);
+        move |done: &str| {
+            let Some(window) = weak.upgrade() else { return };
+            // Games aren't part of the form; keep them (also on "Reset to defaults").
+            let games = current.borrow().games.clone();
+            match read_settings(&window, &paths, games) {
+                Ok(settings) => commit(settings, done),
+                Err(e) => set_message(&window, &e, true),
+            }
+        }
+    };
     let apply = Rc::new(apply);
+
+    // Window picker: the open windows as listed when it was opened (or refreshed).
+    let picker_windows: Rc<RefCell<Vec<OpenWindow>>> = Rc::default();
+    window.on_choose_window({
+        let weak = window.as_weak();
+        let current = Rc::clone(&current);
+        let picker_windows = Rc::clone(&picker_windows);
+        move || {
+            let Some(window) = weak.upgrade() else { return };
+            let windows = match list_windows() {
+                Ok(windows) => windows,
+                Err(e) => {
+                    tracing::warn!("cannot list windows: {e}");
+                    Vec::new()
+                }
+            };
+            let own_pid = std::process::id();
+            let windows: Vec<OpenWindow> = windows
+                .into_iter()
+                .filter(|w| w.pid != Some(own_pid))
+                .collect();
+            let games = current.borrow().all_games();
+            let recording = picker_controller.current_window();
+            let rows: Vec<WindowRow> = windows
+                .iter()
+                .map(|w| WindowRow {
+                    title: w.facts.title.trim().into(),
+                    detail: match find_game(&games, &w.facts) {
+                        Some(game) if recording == Some(w.id) => {
+                            format!("Recording now · {}", game.name)
+                        }
+                        Some(game) => format!("In your games: {}", game.name),
+                        None => w
+                            .facts
+                            .executable()
+                            .or_else(|| w.facts.class.last().cloned())
+                            .unwrap_or_default(),
+                    }
+                    .into(),
+                })
+                .collect();
+            *picker_windows.borrow_mut() = windows;
+            window.set_open_windows(ModelRc::new(VecModel::from(rows)));
+            window.set_picker_open(true);
+        }
+    });
+    window.on_pick_window({
+        let weak = window.as_weak();
+        let current = Rc::clone(&current);
+        let commit = Rc::clone(&commit);
+        move |index| {
+            let Some(window) = weak.upgrade() else { return };
+            let picked = usize::try_from(index)
+                .ok()
+                .and_then(|i| picker_windows.borrow().get(i).cloned());
+            let Some(picked) = picked else { return };
+            let mut settings = current.borrow().clone();
+            // A window one of your games already matches is just recorded, not added again.
+            let known = find_game(&settings.all_games(), &picked.facts).map(|g| g.name.clone());
+            let name = known.unwrap_or_else(|| settings.add_game(Game::from_window(&picked.facts)));
+            tracing::info!(game = %name, title = %picked.facts.title, "window picked");
+            window.set_picker_open(false);
+            // The picked window wins over the game being recorded (user override).
+            let switch = trial_controller.prefer_window(picked.id);
+            if settings == *current.borrow() {
+                if switch {
+                    trial_controller.restart_recorder();
+                }
+                set_message(&window, &format!("Recording {name}."), false);
+            } else {
+                // Kept only if it can be recorded (see on_game_failed).
+                trial_controller.try_game(&name);
+                commit(settings, &format!("Added {name} to your games."));
+            }
+        }
+    });
+    window.on_game_failed({
+        let weak = window.as_weak();
+        let current = Rc::clone(&current);
+        let commit = Rc::clone(&commit);
+        move |name, error| {
+            let Some(window) = weak.upgrade() else { return };
+            let mut settings = current.borrow().clone();
+            settings.games.retain(|g| g.name != name.as_str());
+            tracing::info!(game = %name, "picked game can't be recorded: removed again");
+            commit(settings, "");
+            set_message(
+                &window,
+                &format!("Can't record {name}, so it wasn't added to your games: {error}"),
+                true,
+            );
+        }
+    });
+    window.on_remove_game({
+        let current = Rc::clone(&current);
+        let commit = Rc::clone(&commit);
+        move |index| {
+            // Row 0 is the built-in World of Warcraft; the user's games follow.
+            let Some(i) = usize::try_from(index).ok().and_then(|i| i.checked_sub(1)) else {
+                return;
+            };
+            let mut settings = current.borrow().clone();
+            if i >= settings.games.len() {
+                return;
+            }
+            let game = settings.games.remove(i);
+            tracing::info!(game = %game.name, "game removed");
+            commit(settings, &format!("Removed {}.", game.name));
+        }
+    });
 
     window.on_apply({
         let apply = Rc::clone(&apply);
@@ -370,6 +496,17 @@ fn show_settings(window: &MainWindow, settings: &Settings, paths: &Paths) {
     window.set_custom_title_bar(settings.custom_title_bar);
     window.set_buffer_dir(paths.contract_home(&settings.buffer_dir(paths)).into());
     window.set_output_dir(paths.contract_home(&settings.output_dir(paths)).into());
+    let games: Vec<GameRow> = settings
+        .all_games()
+        .iter()
+        .enumerate()
+        .map(|(i, game)| GameRow {
+            name: game.name.clone().into(),
+            detail: game.describe().into(),
+            builtin: i == 0,
+        })
+        .collect();
+    window.set_games(ModelRc::new(VecModel::from(games)));
 }
 
 fn read_settings(window: &MainWindow, paths: &Paths, games: Vec<Game>) -> Result<Settings, String> {

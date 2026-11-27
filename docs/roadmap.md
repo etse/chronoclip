@@ -21,7 +21,7 @@ Goal: Chronoclip records whatever game you play, not just WoW: it finds the game
 
 Decisions (maintainer, 2026-11-27):
 - **How automatic:** a "looks like a game" score, plus a "Record this game?" question for unknown games; the answer is remembered.
-- **Two games open:** the first one found is recorded until it closes.
+- **Two games open:** the first one found is recorded until it closes. Choosing another window in the picker switches to it (user override). The recorder also stays with its window when settings change.
 - **Clips:** a folder per game, e.g. `Elden Ring/Elden Ring_2026-11-27_21-04-33.mp4`.
 - **Game changes:** the buffer is cleared, so a clip never mixes two games.
 
@@ -38,13 +38,19 @@ Detection only reads window properties and `/proc/<pid>/{comm,cmdline,environ}` 
 - [x] Core: a `Game` model (name, how it's matched: executable, Steam app id, window title) and a games list in the settings, with WoW built in; replaces the WoW-only `WindowMatcher` (tests for matching and settings validation)
   - `chronoclip-core::games` (`Game` with `executables` / `title_contains`, `WindowFacts`, `find_game`); `Settings::games` (`[[games]]`, invalid entries dropped on load) and `all_games()` = WoW first, then the user's. Steam app ids come with the launcher task. Game sound is matched by the game's executables and name instead of WoW's. `CHRONOCLIP_WINDOW` is now a title-only game
   - Test instance: a game added only in `settings.toml` (`games = [{ name = "Test Game", title_contains = "cc-game-a" }]`) was found (`found window game=Test Game`), its sound recorded by process id, and a 12 s clip saved (H.264 + AAC). The Settings page keeps the games list when it saves
-- [ ] Window picker: "Choose a window…" on Home lists open windows (title, executable); picking one adds it to your games and records it
+- [x] Window picker: "Choose a window…" on Home lists open windows (title, executable); picking one adds it to your games and records it
+  - Home: "Game not found? Choose window" (while waiting) / "Choose window"; Games tab: "Add a game window…". Dialog over the window (`app/ui/picker.slint`), Esc or a click outside closes it. Lists `_NET_CLIENT_LIST` without desktop/dock windows, untitled ones and Chronoclip itself; shows the program or "Recorded as <game>"
+  - A picked window becomes a game matched by its executable (`.exe` under Wine/Proton, else the program file); generic runners (Wine, Python, Java, …) are matched by title instead. Already covered (e.g. picking WoW) → "already in your games"
+  - Test instance (2026-11-27): picked a test window from the picker → `window picked`, saved as `[[games]]`, recorded at once (`found window game=cc-game-b`)
+  - Maintainer: works (2026-11-27), but a window that can't be recorded stayed in the list. Fixed: a pick is a trial; if recording it fails before it records (`RecorderStatus::Failed`), it's removed again and Home shows why. Windows under 64×64 aren't listed. Test instance: a 1×1 "Notes" window (NVENC refused it) was removed again with the reason on Home; a working test window was kept (`picked game records fine`)
 - [ ] Game names from launchers: Steam (`steam_app_<id>` / `SteamAppId` → `appmanifest`, tools filtered out), Lutris (`pga.db`), Faugus, Heroic; the executable name as fallback
 - [ ] Game score: signals for (Wine/Proton/Steam launched, bypass-compositor `1`, fullscreen or monitor-sized, GameMode) and against (known launchers and helpers, browsers, Electron apps); unit tests on recorded window lists, including the Battle.net launcher above
 - [ ] "Record this game?" notification for a likely but unknown game (Always / Not this one), remembered by executable
 - [ ] Per-game clips: folder and file name after the game (safe file names); status texts, tray, "nothing recorded" message name the game
 - [ ] Switching games: when the recorded game closes, look again; a different game clears the buffer first
-- [ ] Settings: a Games card listing your games (World of Warcraft built in, games you added or that were detected), with **Remove** for one added by mistake, and the "never record" list (built with the window picker, so a wrong pick can be undone right away)
+  - Done so far: the recorder keeps a shared "current window" (`Controller::current_window`), prefers it in `find_window` and sets it to what it records, so a second game doesn't take over and a settings change doesn't switch games. Picking a window points it there and restarts the recorder (buffer cleared). Test instance (2026-11-27), games [B, A]: A started first → A; B started → still A; picked B → B; settings changed (game removed) → still B; B closed → back to A. Picking a window one of your games already matches records it without adding a duplicate. Open: clip folders per game (with the per-game clips task)
+- [ ] Games tab (planned as a Settings card) listing your games (World of Warcraft built in, games you added or that were detected), with **Remove** for one added by mistake, and the "never record" list (built with the window picker, so a wrong pick can be undone right away)
+  - Done: a **Games tab** (Home · Games · Settings · About; moved out of Settings after the maintainer noted the list easily grows past 10 games) lists World of Warcraft ("Built in") and your games with how they're recognized, **Remove** and "Add a game window…". Checked with 12 games: scrolls, Remove hits the right entry. Test instance: Remove dropped the game from `settings.toml` and recording stopped ("Nothing recorded yet"). Open: the "never record" list (with the "Record this game?" question)
 - [ ] Texts: "for World of Warcraft" → "for your games" in README, About, desktop file, metainfo, CLI help, autostart file
 - [ ] Docs: README, architecture.md (detection), AGENTS.md (project description), CHANGELOG
 - [ ] Verified: fmt, clippy, tests; test instance with test windows (known game, unknown game → question, launcher ignored, switch clears buffer)

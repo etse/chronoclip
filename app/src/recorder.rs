@@ -16,9 +16,9 @@
 //! of a session that has already ended.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -92,6 +92,11 @@ pub enum RecorderStatus {
         audio: Option<String>,
     },
     Error(String),
+    /// Recording `game`'s window failed (it is tried again after a pause).
+    Failed {
+        game: String,
+        error: String,
+    },
     Stopped,
 }
 
@@ -106,8 +111,12 @@ pub struct Recorder {
 }
 
 impl Recorder {
+    /// `current` is the window to stay with: the recorder prefers it when looking for a game
+    /// and sets it to the window it records (cleared when no game window is open). Shared, so
+    /// it survives restarts and the window picker can point it elsewhere.
     pub fn start(
         config: RecorderConfig,
+        current: Arc<Mutex<Option<u64>>>,
         on_status: impl Fn(RecorderStatus) + Send + Sync + 'static,
     ) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
@@ -121,7 +130,7 @@ impl Recorder {
             let on_status: Arc<StatusFn> = Arc::new(on_status);
             thread::Builder::new()
                 .name("recorder".into())
-                .spawn(move || run(config, &stop, retention_secs, &buffer, on_status))
+                .spawn(move || run(config, &current, &stop, retention_secs, &buffer, on_status))
         };
         let thread = thread
             .inspect_err(|e| tracing::error!("could not start recorder thread: {e}"))
@@ -199,6 +208,7 @@ unsafe impl Send for SendMessage {}
 
 fn run(
     config: RecorderConfig,
+    current: &Mutex<Option<u64>>,
     stop: &AtomicBool,
     retention_secs: Arc<AtomicU64>,
     buffer: &Arc<ReplayBuffer>,
@@ -274,11 +284,15 @@ fn run(
     let mut last_game: Option<Option<u32>> = None;
     let mut window_gone = false;
     while !stop.load(Ordering::Relaxed) {
-        let window = match find_window(&config.games) {
+        let prefer = *current.lock().unwrap_or_else(|e| e.into_inner());
+        let window = match find_window(&config.games, prefer) {
             Ok(Some(w)) if w.viewable => w,
             Ok(found) => {
-                if found.is_none() && last_game.is_some() {
-                    window_gone = true;
+                if found.is_none() {
+                    *current.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                    if last_game.is_some() {
+                        window_gone = true;
+                    }
                 }
                 on_status(RecorderStatus::WaitingForWindow);
                 sleep_unless_stopped(stop, WINDOW_POLL);
@@ -315,7 +329,9 @@ fn run(
                 game: window.game.clone(),
             }));
         }
+        *current.lock().unwrap_or_else(|e| e.into_inner()) = Some(window.id);
         session_id += 1;
+        let game = window.game.name.clone();
         let result = record_window(
             &config,
             Window {
@@ -340,8 +356,8 @@ fn run(
         match result {
             Ok(()) => {}
             Err(e) => {
-                tracing::warn!("recording stopped: {e}");
-                on_status(RecorderStatus::Error(e));
+                tracing::warn!(%game, "recording stopped: {e}");
+                on_status(RecorderStatus::Failed { game, error: e });
                 sleep_unless_stopped(stop, ERROR_RETRY);
             }
         }

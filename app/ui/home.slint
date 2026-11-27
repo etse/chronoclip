@@ -148,11 +148,14 @@ export component HomePage {
     in property <bool> saving;
     in property <string> save-text;
     in property <bool> save-is-error;
+    // An error to show on Home, e.g. a picked window that can't be recorded.
+    in property <string> notice;
     // Last saved clip.
     in property <bool> has-last-clip;
     in property <string> last-clip-name;
     in property <string> last-clip-detail;
     callback save-replay();
+    callback choose-window();
     callback play-last-clip();
     callback show-last-clip();
 
@@ -173,6 +176,18 @@ export component HomePage {
                     }
 
                     Rectangle { }
+
+                    Button {
+                        text: root.state == RecState.recording ? "Choose window" : "Game not found? Choose window";
+                        kind: ButtonKind.ghost;
+                        has-icon: true;
+                        icon: @image-url("icons/lucide/app-window.svg");
+                        height-hint: 30px;
+                        font-size: Theme.font-small;
+                        clicked => {
+                            root.choose-window();
+                        }
+                    }
                 }
 
                 Text {
@@ -215,6 +230,22 @@ export component HomePage {
                         value: root.buffer-fraction;
                         fill: root.state == RecState.recording ? Theme.accent : Theme.border-strong;
                     }
+                }
+            }
+        }
+
+        if root.notice != "": Rectangle {
+            border-radius: Theme.radius;
+            background: Theme.danger.with-alpha(0.12);
+            border-width: 1px;
+            border-color: Theme.danger.with-alpha(0.4);
+            HorizontalLayout {
+                padding: Theme.space-m;
+                Text {
+                    text: root.notice;
+                    color: Theme.text;
+                    font-size: Theme.font-small;
+                    wrap: word-wrap;
                 }
             }
         }
