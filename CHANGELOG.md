@@ -11,9 +11,9 @@ versions follow [Semantic Versioning](https://semver.org/).
 - **Record other games:** *Choose window* on Home (or *Add a game window…* on the new **Games** tab)
   lists your open windows; pick the game and Chronoclip records it, now and whenever it runs.
   A window that can't be recorded isn't added; Home says why.
-- **Built-in games:** World of Warcraft, Warcraft III, StarCraft II, Heroes of the Storm, ELDEN RING,
-  Palworld, Path of Exile 2 and Satisfactory are recognized by themselves (also through their
-  Steam app id). More can be added to the catalog with a pull request (see CONTRIBUTING.md).
+- **176 built-in games** are recognized by themselves: World of Warcraft and other Blizzard games,
+  and the most played Steam games (by their Steam app id). More can be added with a pull request
+  (see CONTRIBUTING.md).
 - **Installed games are found by themselves:** every installed Steam game and known games in Wine
   prefixes (Battle.net through Faugus, Lutris, Heroic, Bottles or Steam). The Games tab lists them;
   *Don't record* switches one off.

@@ -13,6 +13,256 @@
 #
 # Every id and executable must come from somewhere checkable (an install, the Steam store,
 # PCGamingWiki). Note the source in a comment.
+#
+# Steam-only entries ("Steam store API, app <id>"): Steam's most played games chart
+# (ISteamChartsService/GetMostPlayedGames, 2026-11-27) and popular titles, each checked with
+# store.steampowered.com/api/appdetails (name, and type "game"); ™ ® © left out of names.
+# Software (Wallpaper Engine, OBS Studio, overlays) is left out.
+
+[[game]]
+# Steam store API, app 251570.
+name = "7 Days to Die"
+steam_app_ids = [251570]
+
+[[game]]
+# Steam store API, app 813780.
+name = "Age of Empires II: Definitive Edition"
+steam_app_ids = [813780]
+
+[[game]]
+# Steam store API, app 714010.
+name = "Aimlabs"
+steam_app_ids = [714010]
+
+[[game]]
+# Steam store API, app 3393110.
+name = "AION 2"
+steam_app_ids = [3393110]
+
+[[game]]
+# Steam store API, app 945360.
+name = "Among Us"
+steam_app_ids = [945360]
+
+[[game]]
+# Steam store API, app 4126040.
+name = "Aniimo"
+steam_app_ids = [4126040]
+
+[[game]]
+# Steam store API, app 1172470.
+name = "Apex Legends"
+steam_app_ids = [1172470]
+
+[[game]]
+# Steam store API, app 1808500.
+name = "ARC Raiders"
+steam_app_ids = [1808500]
+
+[[game]]
+# Steam store API, app 2073620.
+name = "Arena Breakout: Infinite"
+steam_app_ids = [2073620]
+
+[[game]]
+# Steam store API, app 1888160.
+name = "ARMORED CORE VI FIRES OF RUBICON"
+steam_app_ids = [1888160]
+
+[[game]]
+# Steam store API, app 244210.
+name = "Assetto Corsa"
+steam_app_ids = [244210]
+
+[[game]]
+# Steam store API, app 2379780.
+name = "Balatro"
+steam_app_ids = [2379780]
+
+[[game]]
+# Steam store API, app 1086940.
+name = "Baldur's Gate 3"
+steam_app_ids = [1086940]
+
+[[game]]
+# Steam store API, app 1238840.
+name = "Battlefield 1"
+steam_app_ids = [1238840]
+
+[[game]]
+# Steam store API, app 1517290.
+name = "Battlefield 2042"
+steam_app_ids = [1517290]
+
+[[game]]
+# Steam store API, app 2807960.
+name = "Battlefield 6"
+steam_app_ids = [2807960]
+
+[[game]]
+# Steam store API, app 1238810.
+name = "Battlefield V"
+steam_app_ids = [1238810]
+
+[[game]]
+# Steam store API, app 284160.
+name = "BeamNG.drive"
+steam_app_ids = [284160]
+
+[[game]]
+# Steam store API, app 2358720.
+name = "Black Myth: Wukong"
+steam_app_ids = [2358720]
+
+[[game]]
+# Steam store API, app 960090.
+name = "Bloons TD 6"
+steam_app_ids = [960090]
+
+[[game]]
+# Steam store API, app 291550.
+name = "Brawlhalla"
+steam_app_ids = [291550]
+
+[[game]]
+# Steam store API, app 1942280.
+name = "Brotato"
+steam_app_ids = [1942280]
+
+[[game]]
+# Steam store API, app 1938090.
+name = "Call of Duty"
+steam_app_ids = [1938090]
+
+[[game]]
+# Steam store API, app 504230.
+name = "Celeste"
+steam_app_ids = [504230]
+
+[[game]]
+# Steam store API, app 255710.
+name = "Cities: Skylines"
+steam_app_ids = [255710]
+
+[[game]]
+# Steam store API, app 730.
+name = "Counter-Strike 2"
+steam_app_ids = [730]
+
+[[game]]
+# Steam store API, app 3321460.
+name = "Crimson Desert Enhanced"
+steam_app_ids = [3321460]
+
+[[game]]
+# Steam store API, app 1158310.
+name = "Crusader Kings III"
+steam_app_ids = [1158310]
+
+[[game]]
+# Steam store API, app 1091500.
+name = "Cyberpunk 2077"
+steam_app_ids = [1091500]
+
+[[game]]
+# Steam store API, app 374320.
+name = "DARK SOULS III"
+steam_app_ids = [374320]
+
+[[game]]
+# Steam store API, app 1868140.
+name = "DAVE THE DIVER"
+steam_app_ids = [1868140]
+
+[[game]]
+# Steam store API, app 221100.
+name = "DayZ"
+steam_app_ids = [221100]
+
+[[game]]
+# Steam store API, app 381210.
+name = "Dead by Daylight"
+steam_app_ids = [381210]
+
+[[game]]
+# Steam store API, app 1422450.
+name = "Deadlock"
+steam_app_ids = [1422450]
+
+[[game]]
+# Steam store API, app 548430.
+name = "Deep Rock Galactic"
+steam_app_ids = [548430]
+
+[[game]]
+# Steam store API, app 2507950.
+name = "Delta Force"
+steam_app_ids = [2507950]
+
+[[game]]
+# Steam store API, app 1085660.
+name = "Destiny 2"
+steam_app_ids = [1085660]
+
+[[game]]
+# Steam store API, app 1222140.
+name = "Detroit: Become Human"
+steam_app_ids = [1222140]
+
+[[game]]
+# Steam store API, app 2344520.
+name = "Diablo IV"
+steam_app_ids = [2344520]
+
+[[game]]
+# Steam store API, app 230230.
+name = "Divinity: Original Sin (Classic)"
+steam_app_ids = [230230]
+
+[[game]]
+# Steam store API, app 435150.
+name = "Divinity: Original Sin 2 - Definitive Edition"
+steam_app_ids = [435150]
+
+[[game]]
+# Steam store API, app 698780.
+name = "Doki Doki Literature Club!"
+steam_app_ids = [698780]
+
+[[game]]
+# Steam store API, app 322330.
+name = "Don't Starve Together"
+steam_app_ids = [322330]
+
+[[game]]
+# Steam store API, app 570.
+name = "Dota 2"
+steam_app_ids = [570]
+
+[[game]]
+# Steam store API, app 1366540.
+name = "Dyson Sphere Program"
+steam_app_ids = [1366540]
+
+[[game]]
+# Steam store API, app 2195250.
+name = "EA SPORTS FC 24"
+steam_app_ids = [2195250]
+
+[[game]]
+# Steam store API, app 3405690.
+name = "EA SPORTS FC 26"
+steam_app_ids = [3405690]
+
+[[game]]
+# Steam store API, app 4080220.
+name = "EA SPORTS FC 27"
+steam_app_ids = [4080220]
+
+[[game]]
+# Steam store API, app 1665460.
+name = "eFootball"
+steam_app_ids = [1665460]
 
 [[game]]
 # Steam manifest 1245620; Game/eldenring.exe in the Steam install (start_protected_game.exe only starts it).
@@ -21,10 +271,315 @@ steam_app_ids = [1245620]
 executables = ["eldenring.exe"]
 
 [[game]]
+# Steam store API, app 2622380.
+name = "ELDEN RING NIGHTREIGN"
+steam_app_ids = [2622380]
+
+[[game]]
+# Steam store API, app 1203620.
+name = "Enshrouded"
+steam_app_ids = [1203620]
+
+[[game]]
+# Steam store API, app 3932890.
+name = "Escape from Tarkov"
+steam_app_ids = [3932890]
+
+[[game]]
+# Steam store API, app 227300.
+name = "Euro Truck Simulator 2"
+steam_app_ids = [227300]
+
+[[game]]
+# Steam store API, app 8500.
+name = "EVE Online"
+steam_app_ids = [8500]
+
+[[game]]
+# Steam store API, app 427520.
+name = "Factorio"
+steam_app_ids = [427520]
+
+[[game]]
+# Steam store API, app 1097150.
+name = "Fall Guys"
+steam_app_ids = [1097150]
+
+[[game]]
+# Steam store API, app 377160.
+name = "Fallout 4"
+steam_app_ids = [377160]
+
+[[game]]
+# Steam store API, app 2300320.
+name = "Farming Simulator 25"
+steam_app_ids = [2300320]
+
+[[game]]
+# Steam store API, app 2352620.
+name = "Fellowship"
+steam_app_ids = [2352620]
+
+[[game]]
+# Steam store API, app 39210.
+name = "FINAL FANTASY XIV Online"
+steam_app_ids = [39210]
+
+[[game]]
+# Steam store API, app 1100600.
+name = "Football Manager 2020"
+steam_app_ids = [1100600]
+
+[[game]]
+# Steam store API, app 4530370.
+name = "Football Manager 27"
+steam_app_ids = [4530370]
+
+[[game]]
+# Steam store API, app 1551360.
+name = "Forza Horizon 5"
+steam_app_ids = [1551360]
+
+[[game]]
+# Steam store API, app 2483190.
+name = "Forza Horizon 6"
+steam_app_ids = [2483190]
+
+[[game]]
+# Steam store API, app 4000.
+name = "Garry's Mod"
+steam_app_ids = [4000]
+
+[[game]]
+# Steam store API, app 322170.
+name = "Geometry Dash"
+steam_app_ids = [322170]
+
+[[game]]
+# Steam store API, app 2215430.
+name = "Ghost of Tsushima DIRECTOR'S CUT"
+steam_app_ids = [2215430]
+
+[[game]]
+# Steam store API, app 1593500.
+name = "God of War"
+steam_app_ids = [1593500]
+
+[[game]]
+# Steam store API, app 2322010.
+name = "God of War Ragnarök"
+steam_app_ids = [2322010]
+
+[[game]]
+# Steam store API, app 12210.
+name = "Grand Theft Auto IV: The Complete Edition"
+steam_app_ids = [12210]
+
+[[game]]
+# Steam store API, app 3240220.
+name = "Grand Theft Auto V Enhanced"
+steam_app_ids = [3240220]
+
+[[game]]
+# Steam store API, app 271590.
+name = "Grand Theft Auto V Legacy"
+steam_app_ids = [271590]
+
+[[game]]
+# Steam store API, app 962130.
+name = "Grounded"
+steam_app_ids = [962130]
+
+[[game]]
+# Steam store API, app 1284210.
+name = "Guild Wars 2"
+steam_app_ids = [1284210]
+
+[[game]]
+# Steam store API, app 1145360.
+name = "Hades"
+steam_app_ids = [1145360]
+
+[[game]]
+# Steam store API, app 1145350.
+name = "Hades II"
+steam_app_ids = [1145350]
+
+[[game]]
+# Steam store API, app 1240440.
+name = "Halo Infinite"
+steam_app_ids = [1240440]
+
+[[game]]
+# Steam store API, app 976730.
+name = "Halo: The Master Chief Collection"
+steam_app_ids = [976730]
+
+[[game]]
+# Steam store API, app 394360.
+name = "Hearts of Iron IV"
+steam_app_ids = [394360]
+
+[[game]]
+# Steam store API, app 553850.
+name = "HELLDIVERS 2"
+steam_app_ids = [553850]
+
+[[game]]
 # Battle.net install: Heroes of the Storm/Versions/Base<build>/HeroesOfTheStorm_x64.exe
 # ("Heroes of the Storm.exe" in the main folder only starts it).
 name = "Heroes of the Storm"
 executables = ["HeroesOfTheStorm_x64.exe"]
+
+[[game]]
+# Steam store API, app 1659040.
+name = "HITMAN World of Assassination"
+steam_app_ids = [1659040]
+
+[[game]]
+# Steam store API, app 990080.
+name = "Hogwarts Legacy"
+steam_app_ids = [990080]
+
+[[game]]
+# Steam store API, app 367520.
+name = "Hollow Knight"
+steam_app_ids = [367520]
+
+[[game]]
+# Steam store API, app 1030300.
+name = "Hollow Knight: Silksong"
+steam_app_ids = [1030300]
+
+[[game]]
+# Steam store API, app 2420110.
+name = "Horizon Forbidden West Complete Edition"
+steam_app_ids = [2420110]
+
+[[game]]
+# Steam store API, app 1151640.
+name = "Horizon Zero Dawn Complete Edition"
+steam_app_ids = [1151640]
+
+[[game]]
+# Steam store API, app 594650.
+name = "Hunt: Showdown 1896"
+steam_app_ids = [594650]
+
+[[game]]
+# Steam store API, app 1092790.
+name = "Inscryption"
+steam_app_ids = [1092790]
+
+[[game]]
+# Steam store API, app 1426210.
+name = "It Takes Two"
+steam_app_ids = [1426210]
+
+[[game]]
+# Steam store API, app 220200.
+name = "Kerbal Space Program"
+steam_app_ids = [220200]
+
+[[game]]
+# Steam store API, app 1771300.
+name = "Kingdom Come: Deliverance II"
+steam_app_ids = [1771300]
+
+[[game]]
+# Steam store API, app 550.
+name = "Left 4 Dead 2"
+steam_app_ids = [550]
+
+[[game]]
+# Steam store API, app 1966720.
+name = "Lethal Company"
+steam_app_ids = [1966720]
+
+[[game]]
+# Steam store API, app 1627720.
+name = "Lies of P"
+steam_app_ids = [1627720]
+
+[[game]]
+# Steam store API, app 1973530.
+name = "Limbus Company"
+steam_app_ids = [1973530]
+
+[[game]]
+# Steam store API, app 1599340.
+name = "Lost Ark"
+steam_app_ids = [1599340]
+
+[[game]]
+# Steam store API, app 2767030.
+name = "Marvel Rivals"
+steam_app_ids = [2767030]
+
+[[game]]
+# Steam store API, app 1817070.
+name = "Marvel’s Spider-Man Remastered"
+steam_app_ids = [1817070]
+
+[[game]]
+# Steam store API, app 1817190.
+name = "Marvel’s Spider-Man: Miles Morales"
+steam_app_ids = [1817190]
+
+[[game]]
+# Steam store API, app 2246340.
+name = "Monster Hunter Wilds"
+steam_app_ids = [2246340]
+
+[[game]]
+# Steam store API, app 582010.
+name = "Monster Hunter: World"
+steam_app_ids = [582010]
+
+[[game]]
+# Steam store API, app 261550.
+name = "Mount & Blade II: Bannerlord"
+steam_app_ids = [261550]
+
+[[game]]
+# Steam store API, app 1203220.
+name = "NARAKA: BLADEPOINT"
+steam_app_ids = [1203220]
+
+[[game]]
+# Steam store API, app 4356430.
+name = "NBA 2K27"
+steam_app_ids = [4356430]
+
+[[game]]
+# Steam store API, app 1063730.
+name = "New World: Aeternum"
+steam_app_ids = [1063730]
+
+[[game]]
+# Steam store API, app 1928980.
+name = "Nightingale"
+steam_app_ids = [1928980]
+
+[[game]]
+# Steam store API, app 275850.
+name = "No Man's Sky"
+steam_app_ids = [275850]
+
+[[game]]
+# Steam store API, app 1150690.
+name = "OMORI"
+steam_app_ids = [1150690]
+
+[[game]]
+# Steam store API, app 2139460.
+name = "Once Human"
+steam_app_ids = [2139460]
+
+[[game]]
+# Steam store API, app 2357570.
+name = "Overwatch"
+steam_app_ids = [2357570]
 
 [[game]]
 # Steam manifest 1623730; Pal/Binaries/Win64/Palworld-Win64-Shipping.exe in the Steam install.
@@ -33,10 +588,115 @@ steam_app_ids = [1623730]
 executables = ["Palworld-Win64-Shipping.exe"]
 
 [[game]]
+# Steam store API, app 238960.
+name = "Path of Exile"
+steam_app_ids = [238960]
+
+[[game]]
 # Steam manifest 2694490; PathOfExileSteam.exe in the Steam install.
 name = "Path of Exile 2"
 steam_app_ids = [2694490]
 executables = ["PathOfExileSteam.exe"]
+
+[[game]]
+# Steam store API, app 3527290.
+name = "PEAK"
+steam_app_ids = [3527290]
+
+[[game]]
+# Steam store API, app 2161700.
+name = "Persona 3 Reload"
+steam_app_ids = [2161700]
+
+[[game]]
+# Steam store API, app 1687950.
+name = "Persona 5 Royal"
+steam_app_ids = [1687950]
+
+[[game]]
+# Steam store API, app 4115450.
+name = "Phantom Blade Zero"
+steam_app_ids = [4115450]
+
+[[game]]
+# Steam store API, app 739630.
+name = "Phasmophobia"
+steam_app_ids = [739630]
+
+[[game]]
+# Steam store API, app 1290000.
+name = "PowerWash Simulator"
+steam_app_ids = [1290000]
+
+[[game]]
+# Steam store API, app 4348910.
+name = "Probably Stolen - Cyberpunk Shopkeeper Sim"
+steam_app_ids = [4348910]
+
+[[game]]
+# Steam store API, app 108600.
+name = "Project Zomboid"
+steam_app_ids = [108600]
+
+[[game]]
+# Steam store API, app 578080.
+name = "PUBG: BATTLEGROUNDS"
+steam_app_ids = [578080]
+
+[[game]]
+# Steam store API, app 3241660.
+name = "R.E.P.O."
+steam_app_ids = [3241660]
+
+[[game]]
+# Steam store API, app 1144200.
+name = "Ready or Not"
+steam_app_ids = [1144200]
+
+[[game]]
+# Steam store API, app 1174180.
+name = "Red Dead Redemption 2"
+steam_app_ids = [1174180]
+
+[[game]]
+# Steam store API, app 883710.
+name = "Resident Evil 2"
+steam_app_ids = [883710]
+
+[[game]]
+# Steam store API, app 2050650.
+name = "Resident Evil 4"
+steam_app_ids = [2050650]
+
+[[game]]
+# Steam store API, app 1196590.
+name = "Resident Evil Village"
+steam_app_ids = [1196590]
+
+[[game]]
+# Steam store API, app 294100.
+name = "RimWorld"
+steam_app_ids = [294100]
+
+[[game]]
+# Steam store API, app 632360.
+name = "Risk of Rain 2"
+steam_app_ids = [632360]
+
+[[game]]
+# Steam store API, app 4262460.
+name = "ROB RUN"
+steam_app_ids = [4262460]
+
+[[game]]
+# Steam store API, app 252950.
+name = "Rocket League"
+steam_app_ids = [252950]
+
+[[game]]
+# Steam store API, app 252490.
+name = "Rust"
+steam_app_ids = [252490]
 
 [[game]]
 # Steam manifest 526870; Engine/Binaries/Win64/FactoryGameSteam-Win64-Shipping.exe in the Steam
@@ -46,10 +706,160 @@ steam_app_ids = [526870]
 executables = ["FactoryGameSteam-Win64-Shipping.exe"]
 
 [[game]]
+# Steam store API, app 1172620.
+name = "Sea of Thieves: 2026 Edition"
+steam_app_ids = [1172620]
+
+[[game]]
+# Steam store API, app 814380.
+name = "Sekiro: Shadows Die Twice - GOTY Edition"
+steam_app_ids = [814380]
+
+[[game]]
+# Steam store API, app 289070.
+name = "Sid Meier’s Civilization VI"
+steam_app_ids = [289070]
+
+[[game]]
+# Steam store API, app 646570.
+name = "Slay the Spire"
+steam_app_ids = [646570]
+
+[[game]]
+# Steam store API, app 2868840.
+name = "Slay the Spire 2"
+steam_app_ids = [2868840]
+
+[[game]]
+# Steam store API, app 2001120.
+name = "Split Fiction"
+steam_app_ids = [2001120]
+
+[[game]]
+# Steam store API, app 1172380.
+name = "STAR WARS Jedi: Fallen Order"
+steam_app_ids = [1172380]
+
+[[game]]
+# Steam store API, app 1774580.
+name = "STAR WARS Jedi: Survivor"
+steam_app_ids = [1774580]
+
+[[game]]
 # Battle.net install: StarCraft II/Versions/Base<build>/SC2_x64.exe and SC2.exe (32-bit)
 # ("StarCraft II.exe" in the main folder only starts it).
 name = "StarCraft II"
 executables = ["SC2_x64.exe", "SC2.exe"]
+
+[[game]]
+# Steam store API, app 413150.
+name = "Stardew Valley"
+steam_app_ids = [413150]
+
+[[game]]
+# Steam store API, app 1716740.
+name = "Starfield"
+steam_app_ids = [1716740]
+
+[[game]]
+# Steam store API, app 1364780.
+name = "Street Fighter 6"
+steam_app_ids = [1364780]
+
+[[game]]
+# Steam store API, app 264710.
+name = "Subnautica"
+steam_app_ids = [264710]
+
+[[game]]
+# Steam store API, app 440.
+name = "Team Fortress 2"
+steam_app_ids = [440]
+
+[[game]]
+# Steam store API, app 105600.
+name = "Terraria"
+steam_app_ids = [105600]
+
+[[game]]
+# Steam store API, app 250900.
+name = "The Binding of Isaac: Rebirth"
+steam_app_ids = [250900]
+
+[[game]]
+# Steam store API, app 306130.
+name = "The Elder Scrolls Online"
+steam_app_ids = [306130]
+
+[[game]]
+# Steam store API, app 489830.
+name = "The Elder Scrolls V: Skyrim Special Edition"
+steam_app_ids = [489830]
+
+[[game]]
+# Steam store API, app 2073850.
+name = "THE FINALS"
+steam_app_ids = [2073850]
+
+[[game]]
+# Steam store API, app 1888930.
+name = "The Last of Us Part I"
+steam_app_ids = [1888930]
+
+[[game]]
+# Steam store API, app 1222670.
+name = "The Sims 4"
+steam_app_ids = [1222670]
+
+[[game]]
+# Steam store API, app 292030.
+name = "The Witcher 3: Wild Hunt — Remastered"
+steam_app_ids = [292030]
+
+[[game]]
+# Steam store API, app 1062090.
+name = "Timberborn"
+steam_app_ids = [1062090]
+
+[[game]]
+# Steam store API, app 359550.
+name = "Tom Clancy's Rainbow Six Siege"
+steam_app_ids = [359550]
+
+[[game]]
+# Steam store API, app 1142710.
+name = "Total War: WARHAMMER III"
+steam_app_ids = [1142710]
+
+[[game]]
+# Steam store API, app 1659420.
+name = "UNCHARTED: Legacy of Thieves Collection"
+steam_app_ids = [1659420]
+
+[[game]]
+# Steam store API, app 1604030.
+name = "V Rising"
+steam_app_ids = [1604030]
+
+[[game]]
+# Steam store API, app 892970.
+name = "Valheim"
+steam_app_ids = [892970]
+
+[[game]]
+# Steam store API, app 1794680.
+name = "Vampire Survivors"
+steam_app_ids = [1794680]
+
+[[game]]
+# Steam store API, app 438100.
+name = "VRChat"
+steam_app_ids = [438100]
+
+[[game]]
+# Steam store API, app 236390.
+name = "War Thunder"
+steam_app_ids = [236390]
 
 [[game]]
 # Battle.net install: Warcraft III/_retail_/x86_64/Warcraft III.exe.
@@ -57,7 +867,42 @@ name = "Warcraft III"
 executables = ["Warcraft III.exe"]
 
 [[game]]
+# Steam store API, app 1867240.
+name = "WARDOGS"
+steam_app_ids = [1867240]
+
+[[game]]
+# Steam store API, app 230410.
+name = "Warframe"
+steam_app_ids = [230410]
+
+[[game]]
+# Steam store API, app 1361210.
+name = "Warhammer 40,000: Darktide"
+steam_app_ids = [1361210]
+
+[[game]]
+# Steam store API, app 2183900.
+name = "Warhammer 40,000: Space Marine 2"
+steam_app_ids = [2183900]
+
+[[game]]
 # Battle.net install: World of Warcraft/_retail_/Wow.exe (also _forever_/Wow.exe), Classic, PTR
 # and Beta clients; Chronoclip's reference setup.
 name = "World of Warcraft"
 executables = ["Wow.exe", "WowClassic.exe", "WowT.exe", "WowB.exe", "WowClassicT.exe", "WowClassicB.exe"]
+
+[[game]]
+# Steam store API, app 3513350.
+name = "Wuthering Waves"
+steam_app_ids = [3513350]
+
+[[game]]
+# Steam store API, app 1449850.
+name = "Yu-Gi-Oh! Master Duel"
+steam_app_ids = [1449850]
+
+[[game]]
+# Steam store API, app 4162040.
+name = "Zenless Zone Zero"
+steam_app_ids = [4162040]
