@@ -122,6 +122,7 @@ fn run_app(hidden: bool) -> anyhow::Result<ExitCode> {
         Settings::default()
     });
 
+    ui::select_backend().context("could not start the user interface")?;
     let window = ui::MainWindow::new().context("could not create the window")?;
     let controller = Arc::new(Controller::new(window.as_weak(), paths.clone()));
     ui::init(&window, paths.clone(), &settings, Arc::clone(&controller));

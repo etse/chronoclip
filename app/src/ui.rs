@@ -138,8 +138,11 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
         let commit = Rc::clone(&commit);
         move |done: &str| {
             let Some(window) = weak.upgrade() else { return };
-            // Games aren't part of the form; keep them (also on "Reset to defaults").
-            match read_settings(&window, &paths, &current.borrow()) {
+            // Games aren't part of the form; keep them (also on "Reset to defaults"). Read
+            // first: `commit` writes `current`, so no borrow of it may live across the call
+            // (a `match` on `current.borrow()` keeps the borrow until the match ends).
+            let read = read_settings(&window, &paths, &current.borrow());
+            match read {
                 Ok(settings) => commit(settings, done),
                 Err(e) => set_message(&window, &e, true),
             }
@@ -641,6 +644,48 @@ fn load_launchers(paths: &Paths) -> Launchers {
         &data_home(&paths.home_dir),
         &config_home(&paths.home_dir),
     )
+}
+
+/// Choose Slint's backend (the default, winit with the software renderer) with a hook that
+/// gives every window Chronoclip's icon for the taskbar and Alt+Tab (`_NET_WM_ICON`) before it
+/// is mapped: Slint's `icon` property doesn't reach the window with the software renderer
+/// (embedded images can't be turned into an icon), and Cinnamon's window list doesn't pick up
+/// an icon set after the window appeared. Call before creating any window.
+pub fn select_backend() -> Result<(), slint::PlatformError> {
+    slint::BackendSelector::new()
+        .with_winit_window_attributes_hook(|attributes| attributes.with_window_icon(window_icon()))
+        .select()
+}
+
+/// The app icon as a winit window icon, decoded once from the bundled PNG.
+fn window_icon() -> Option<slint::winit_030::winit::window::Icon> {
+    use slint::winit_030::winit::window::Icon;
+    static PIXELS: std::sync::OnceLock<Option<(Vec<u8>, u32, u32)>> = std::sync::OnceLock::new();
+    let (rgba, width, height) = PIXELS
+        .get_or_init(|| {
+            let png = include_bytes!("../ui/icons/chronoclip-256.png");
+            let mut decoder = png::Decoder::new(std::io::Cursor::new(&png[..]));
+            decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::ALPHA);
+            let mut reader = decoder
+                .read_info()
+                .inspect_err(|e| tracing::debug!("window icon: {e}"))
+                .ok()?;
+            let mut rgba = vec![0; reader.output_buffer_size()?];
+            let info = reader
+                .next_frame(&mut rgba)
+                .inspect_err(|e| tracing::debug!("window icon: {e}"))
+                .ok()?;
+            let rgba8 =
+                info.color_type == png::ColorType::Rgba && info.bit_depth == png::BitDepth::Eight;
+            rgba8.then(|| {
+                rgba.truncate(info.buffer_size());
+                (rgba, info.width, info.height)
+            })
+        })
+        .as_ref()?;
+    Icon::from_rgba(rgba.clone(), *width, *height)
+        .inspect_err(|e| tracing::debug!("window icon: {e}"))
+        .ok()
 }
 
 pub fn set_message(window: &MainWindow, text: &str, is_error: bool) {

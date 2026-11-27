@@ -28,6 +28,10 @@ versions follow [Semantic Versioning](https://semver.org/).
 - **Games tab** lists the games Chronoclip records (World of Warcraft is built in), with
   **Remove** for one you added by mistake.
 
+### Fixed
+
+- The window shows Chronoclip's icon in the taskbar and Alt+Tab instead of a generic one.
+
 ### Changed
 
 - Chronoclip is now a replay buffer for your games, not only World of Warcraft: the app, its

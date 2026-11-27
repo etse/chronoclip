@@ -776,6 +776,7 @@ dependencies = [
  "clap",
  "ffmpeg-next",
  "notify-rust",
+ "png",
  "rustix 1.1.6",
  "slint",
  "slint-build",
