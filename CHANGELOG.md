@@ -11,8 +11,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 - **Record other games:** *Choose window* on Home (or *Add a game window…* on the new **Games** tab)
   lists your open windows; pick the game and Chronoclip records it, now and whenever it runs.
   A window that can't be recorded isn't added; Home says why.
-- Games get their proper name from Steam or Faugus Launcher (e.g. "ELDEN RING"), else the
-  window title.
+- Games get their proper name from Steam, Heroic, Lutris or Faugus Launcher (e.g. "ELDEN RING"),
+  else the window title.
 - Chronoclip stays with the game you started, even when you start another one. To switch, use
   *Choose window*.
 - **Games tab** lists the games Chronoclip records (World of Warcraft is built in), with

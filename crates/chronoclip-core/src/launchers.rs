@@ -3,12 +3,20 @@
 //!
 //! - **Steam**: the window's app id (WM_CLASS `steam_app_<id>` set by Proton, or `SteamAppId`
 //!   in the game's environment) → `steamapps/appmanifest_<id>.acf` in any Steam library.
+//! - **Heroic** (Epic, GOG, Amazon, sideloaded, …): `HEROIC_APP_NAME` in the environment → the
+//!   title in Heroic's library caches (`store_cache/*_library.json`, `sideload_apps/library.json`).
+//! - **Lutris**: `GAME_NAME` in the environment (Lutris sets it for every game it starts).
 //! - **Faugus Launcher**: `games.json`; an entry counts only if the window runs the entry's own
-//!   executable in the entry's prefix. (WoW runs inside the Battle.net entry's prefix, with
-//!   Battle.net's environment, and must not be called "Battle.net".)
+//!   executable in the entry's prefix.
+//!
+//! A game started from a store launcher (WoW from Battle.net) inherits the launcher entry's
+//! environment: Lutris's `GAME_NAME` is then "Battle.net". Names of known store launchers are
+//! therefore ignored, and Faugus entries must match the executable.
 //!
 //! Only the launchers' own files are read; nothing about the game process beyond what the
-//! capture backend already collects in [`WindowFacts`].
+//! capture backend already collects in [`WindowFacts`]. Lutris and Heroic follow their source
+//! code (Lutris `game.py` `configure_game`, Heroic `launcher.ts` `setupWrapperEnvVars` and its
+//! backup tests); the maintainer has neither installed.
 
 use std::collections::HashMap;
 use std::fs;
@@ -25,7 +33,32 @@ pub const ENV_KEYS: &[&str] = &[
     "SteamGameId",
     "STEAM_COMPAT_APP_ID",
     "WINEPREFIX",
+    "GAME_NAME",
+    "HEROIC_APP_NAME",
 ];
+
+/// Store launchers: a game named like one of these by a launcher entry is probably a game the
+/// store launcher started (WoW from Battle.net), so the name is not used.
+fn is_store_launcher(name: &str) -> bool {
+    const LAUNCHERS: &[&str] = &[
+        "battle.net",
+        "blizzard",
+        "ea app",
+        "origin",
+        "ubisoft connect",
+        "uplay",
+        "epic games",
+        "rockstar games launcher",
+        "gog galaxy",
+        "amazon games",
+        "itch",
+        "steam",
+    ];
+    let name = name.trim().to_lowercase();
+    LAUNCHERS
+        .iter()
+        .any(|l| name == *l || name.starts_with(&format!("{l} ")))
+}
 
 /// Steam "apps" that are tools, not games.
 fn is_steam_tool(name: &str) -> bool {
@@ -39,6 +72,8 @@ fn is_steam_tool(name: &str) -> bool {
 pub struct Launchers {
     /// Steam app id → name.
     steam: HashMap<u32, String>,
+    /// Heroic app name → title.
+    heroic: HashMap<String, String>,
     faugus: Vec<FaugusGame>,
 }
 
@@ -52,9 +87,10 @@ struct FaugusGame {
 }
 
 impl Launchers {
-    /// Read the launchers' files. `home` is the home folder, `data_home` `$XDG_DATA_HOME`.
-    /// Missing or unreadable files just mean no names from that launcher.
-    pub fn load(home: &Path, data_home: &Path) -> Self {
+    /// Read the launchers' files. `home` is the home folder, `data_home` `$XDG_DATA_HOME`,
+    /// `config_home` `$XDG_CONFIG_HOME`. Missing or unreadable files just mean no names from
+    /// that launcher.
+    pub fn load(home: &Path, data_home: &Path, config_home: &Path) -> Self {
         let mut steam = HashMap::new();
         for library in steam_libraries(home, data_home) {
             let Ok(entries) = fs::read_dir(library.join("steamapps")) else {
@@ -82,7 +118,38 @@ impl Launchers {
             .ok()
             .map(|text| parse_faugus(&text))
             .unwrap_or_default();
-        Self { steam, faugus }
+        let mut heroic = HashMap::new();
+        for dir in [
+            config_home.join("heroic"),
+            home.join(".var/app/com.heroicgameslauncher.hgl/config/heroic"),
+        ] {
+            let mut files: Vec<PathBuf> = fs::read_dir(dir.join("store_cache"))
+                .map(|entries| {
+                    entries
+                        .flatten()
+                        .map(|e| e.path())
+                        .filter(|p| {
+                            p.file_name()
+                                .and_then(|f| f.to_str())
+                                .is_some_and(|f| f.ends_with("_library.json"))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            files.push(dir.join("sideload_apps/library.json"));
+            for file in files {
+                if let Ok(text) = fs::read_to_string(&file) {
+                    for (app, title) in heroic_titles(&text) {
+                        heroic.entry(app).or_insert(title);
+                    }
+                }
+            }
+        }
+        Self {
+            steam,
+            heroic,
+            faugus,
+        }
     }
 
     /// Name of installed Steam game `id` (tools such as Proton excluded).
@@ -94,6 +161,19 @@ impl Launchers {
     pub fn name_for(&self, window: &WindowFacts) -> Option<String> {
         if let Some(name) = steam_app_id(window).and_then(|id| self.steam.get(&id)) {
             return Some(name.clone());
+        }
+        if let Some(name) = window
+            .env("HEROIC_APP_NAME")
+            .and_then(|app| self.heroic.get(app))
+        {
+            return Some(name.clone());
+        }
+        if let Some(name) = window
+            .env("GAME_NAME")
+            .map(str::trim)
+            .filter(|n| !n.is_empty() && !is_store_launcher(n))
+        {
+            return Some(name.to_owned());
         }
         let prefix = window.env("WINEPREFIX").map(wine_prefix_root)?;
         let exe = window.executable()?;
@@ -177,6 +257,33 @@ fn vdf_value(text: &str, key: &str) -> Option<String> {
         .into_iter()
         .next()
         .filter(|v| !v.trim().is_empty())
+}
+
+/// `(app_name, title)` of every game in a Heroic library file. The files differ per store
+/// (`{"games": [...]}`, `{"library": [...]}`, …), so any object with both fields counts.
+fn heroic_titles(text: &str) -> Vec<(String, String)> {
+    fn walk(value: &serde_json::Value, out: &mut Vec<(String, String)>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                let field = |k: &str| map.get(k).and_then(|v| v.as_str()).map(str::trim);
+                if let (Some(app), Some(title)) = (field("app_name"), field("title"))
+                    && !app.is_empty()
+                    && !title.is_empty()
+                {
+                    out.push((app.to_owned(), title.to_owned()));
+                }
+                map.values().for_each(|v| walk(v, out));
+            }
+            serde_json::Value::Array(items) => items.iter().for_each(|v| walk(v, out)),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    match serde_json::from_str(text) {
+        Ok(value) => walk(&value, &mut out),
+        Err(e) => tracing::debug!("cannot read a Heroic library file: {e}"),
+    }
+    out
 }
 
 fn parse_faugus(text: &str) -> Vec<FaugusGame> {
@@ -299,7 +406,7 @@ mod tests {
                  "prefix": "/home/me/Faugus/battlenet", "runner": "Proton"}]"#,
         )?;
 
-        let launchers = Launchers::load(home.path(), &data);
+        let launchers = Launchers::load(home.path(), &data, &home.path().join(".config"));
         let steam = |id: &str| window(&[&format!("steam_app_{id}")], &[], &[]);
         assert_eq!(
             launchers.name_for(&steam("1245620")).as_deref(),
@@ -328,6 +435,78 @@ mod tests {
             &prefix,
         );
         assert_eq!(launchers.name_for(&wow), None);
+        Ok(())
+    }
+
+    #[test]
+    fn lutris_names_but_not_store_launchers() {
+        let launchers = Launchers::default();
+        let lutris = |name: &str| window(&[], &["game.exe"], &[("GAME_NAME", name)]);
+        assert_eq!(
+            launchers.name_for(&lutris("Hades")).as_deref(),
+            Some("Hades")
+        );
+        // Diablo IV started from Lutris's "Battle.net" entry inherits its GAME_NAME.
+        assert_eq!(launchers.name_for(&lutris("Battle.net")), None);
+        assert_eq!(launchers.name_for(&lutris("EA App")), None);
+        assert_eq!(launchers.name_for(&lutris("Ubisoft Connect")), None);
+        assert_eq!(launchers.name_for(&lutris(" ")), None);
+        // Not a launcher, despite the prefix.
+        assert_eq!(
+            launchers.name_for(&lutris("Steamworld Dig")).as_deref(),
+            Some("Steamworld Dig")
+        );
+    }
+
+    #[test]
+    fn loads_heroic_titles() -> Result<(), Box<dyn std::error::Error>> {
+        // Shapes from Heroic's own tests (e2e/backup.spec.ts), native and Flatpak.
+        let home = tempfile::tempdir()?;
+        let config = home.path().join(".config");
+        let native = config.join("heroic");
+        let flatpak = home
+            .path()
+            .join(".var/app/com.heroicgameslauncher.hgl/config/heroic");
+        fs::create_dir_all(native.join("store_cache"))?;
+        fs::create_dir_all(native.join("sideload_apps"))?;
+        fs::create_dir_all(flatpak.join("store_cache"))?;
+        fs::write(
+            native.join("store_cache/gog_library.json"),
+            r#"{"games": [{"app_name": "1207658924", "title": "Unreal Tournament 2004"}]}"#,
+        )?;
+        fs::write(
+            native.join("store_cache/itchio_library.json"),
+            r#"{"library": [{"app_name": "itchio-1", "title": "Itch Test", "is_installed": true}]}"#,
+        )?;
+        fs::write(
+            native.join("sideload_apps/library.json"),
+            r#"{"games": [{"app_name": "sideload-test", "title": "Sideload Test", "art_cover": ""}]}"#,
+        )?;
+        fs::write(
+            flatpak.join("store_cache/legendary_library.json"),
+            r#"{"library": [{"app_name": "Fortnite", "title": "Fortnite", "runner": "legendary"}]}"#,
+        )?;
+        fs::write(native.join("store_cache/nile_library.json"), "not json")?;
+
+        let launchers = Launchers::load(home.path(), &home.path().join(".local/share"), &config);
+        let heroic = |app: &str| window(&[], &["game.exe"], &[("HEROIC_APP_NAME", app)]);
+        assert_eq!(
+            launchers.name_for(&heroic("1207658924")).as_deref(),
+            Some("Unreal Tournament 2004")
+        );
+        assert_eq!(
+            launchers.name_for(&heroic("itchio-1")).as_deref(),
+            Some("Itch Test")
+        );
+        assert_eq!(
+            launchers.name_for(&heroic("sideload-test")).as_deref(),
+            Some("Sideload Test")
+        );
+        assert_eq!(
+            launchers.name_for(&heroic("Fortnite")).as_deref(),
+            Some("Fortnite")
+        );
+        assert_eq!(launchers.name_for(&heroic("unknown")), None);
         Ok(())
     }
 

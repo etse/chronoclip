@@ -8,7 +8,8 @@ fn lists_open_windows() -> Result<(), Box<dyn std::error::Error>> {
         .map(std::path::PathBuf::from)
         .unwrap_or_default();
     let data_home = chronoclip_core::paths::data_dirs(&home).remove(0);
-    let launchers = chronoclip_core::launchers::Launchers::load(&home, &data_home);
+    let launchers =
+        chronoclip_core::launchers::Launchers::load(&home, &data_home, &home.join(".config"));
     for w in &windows {
         let game = chronoclip_core::Game::from_window(&w.facts, launchers.name_for(&w.facts));
         eprintln!(
@@ -32,7 +33,8 @@ fn steam_names_on_this_computer() {
         .map(std::path::PathBuf::from)
         .unwrap_or_default();
     let data_home = chronoclip_core::paths::data_dirs(&home).remove(0);
-    let launchers = chronoclip_core::launchers::Launchers::load(&home, &data_home);
+    let launchers =
+        chronoclip_core::launchers::Launchers::load(&home, &data_home, &home.join(".config"));
     for id in [1_245_620, 526_870, 1_623_730, 2_694_490, 1_493_710] {
         eprintln!("{id}: {:?}", launchers.steam_name(id));
     }

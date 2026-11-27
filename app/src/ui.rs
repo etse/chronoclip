@@ -503,7 +503,11 @@ fn load_launchers(paths: &Paths) -> Launchers {
         .into_iter()
         .next()
         .unwrap_or_else(|| paths.home_dir.join(".local/share"));
-    Launchers::load(&paths.home_dir, &data_home)
+    let config_home = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| paths.home_dir.join(".config"));
+    Launchers::load(&paths.home_dir, &data_home, &config_home)
 }
 
 pub fn set_message(window: &MainWindow, text: &str, is_error: bool) {
