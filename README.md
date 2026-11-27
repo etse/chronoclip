@@ -4,10 +4,13 @@
 
 Chronoclip continuously records your gameplay to a rolling buffer on disk. When something worth keeping happens (a boss kill, a clutch round, a hilarious wipe) press your hotkey (default **`Ctrl+F9`**) and the last *N* minutes are saved as a normal video file.
 
-> **Status:** 🚧 Pre-alpha. Recording and saving replays with sound work on X11 with an NVIDIA GPU. See [Roadmap](#roadmap).
+> **Status:** 🧪 Beta. Recording any game and saving replays with sound work and are used daily on X11 with an NVIDIA GPU. Wayland and AMD/Intel GPUs are next. See [Roadmap](#roadmap).
 
 <p align="center">
   <img src="docs/images/chronoclip-window.png" alt="Chronoclip's Home page: a dark window with Home, Games, Settings and About tabs in the title bar, a RECORDING badge for World of Warcraft at 1920×1080 and 60 fps with game sound and a Choose window button, a replay buffer bar at 0:16 of 10:00, a large blue Save replay button showing Ctrl+F9, and the clips saved this session with Play and Show in folder buttons" width="440">
+  <img src="docs/images/chronoclip-games.png" alt="Chronoclip's Games tab: an Add a game window button, a search field, Your games (Minecraft and Old School RuneScape, each with Remove), Installed on this computer, and the built-in games (176) with Don't record buttons" width="440">
+</p>
+<p align="center">
   <img src="docs/images/chronoclip-settings.png" alt="Chronoclip's Settings page: cards for Recording (replay length slider at 10 min, frame rate 30/60/120/144, encoder dropdown) and Sound (Game only, All sound or Off, microphone toggle)" width="440">
 </p>
 
@@ -182,7 +185,7 @@ Detailed status and task checklists: [docs/roadmap.md](docs/roadmap.md).
 6. **M5, polish** ✅ save notification and chime, tray state, start with desktop
 7. **M6, packaging** ✅ .deb (Ubuntu/Mint) and AppImage on GitHub Releases (v0.1.0)
 8. **M7, modern dark UI** ✅ Battle.net-style tabs, Discord-like look (blurple accent), custom title bar, hotkey recorder, last clip card
-9. **M8, other games** 🚧 record any game, not just WoW: game detection (asks when unsure), window picker, a clip folder per game
+9. **M8, other games** ✅ record any game, not just WoW: installed and 176 built-in games found by themselves, "Record this game?" for unknown ones, window picker, a clip folder per game, this session's clips on Home (v0.3.0, first beta)
 10. **M9, Wayland + AMD/Intel**: portal/PipeWire capture, GlobalShortcuts portal, VAAPI
 
 ## Non-goals

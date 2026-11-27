@@ -1,13 +1,13 @@
 ---
 name: readme-screenshot
-description: Retake the Chronoclip window screenshots in the README (docs/images/chronoclip-window.png = Home, chronoclip-settings.png) reproducibly, after the window's layout or texts changed. Use when the UI changed visibly or when closing a milestone that touched the UI.
+description: Retake the Chronoclip window screenshots in the README (docs/images/chronoclip-window.png = Home, chronoclip-settings.png, chronoclip-games.png) reproducibly, after the window's layout or texts changed. Use when the UI changed visibly or when closing a milestone that touched the UI.
 ---
 
 # README screenshot
 
 ```sh
 cargo build --release -p chronoclip
-.agents/skills/readme-screenshot/scripts/readme-screenshot.sh     # → docs/images/chronoclip-{window,settings}.png
+.agents/skills/readme-screenshot/scripts/readme-screenshot.sh     # → docs/images/chronoclip-{window,settings,games}.png
 ```
 
 Pass a different output directory to try it out without touching the README images. The script
@@ -19,9 +19,12 @@ packages links to it on `main`.
 What the script sets up (through the test-instance skill), so the shot looks like a normal
 user's window:
 
-- **Recording state**: a 1920×1080 test window titled "World of Warcraft" with a silent sound
+- **Recording state**: a 1920×1080 test window titled "World of Warcraft" (plus an invisible
+  zero-width space, so an open folder or browser tab with that title isn't picked) with a silent sound
   stream, so Home shows RECORDING, "1920×1080 · 60 fps · Game sound" and the buffer filling.
-- **A saved clip**: one `chronoclip save` after 10 s, so the last clip card has content.
+- **A saved clip**: one `chronoclip save` after 10 s, so *Clips this session* has content.
+- **Two games the user added** (Minecraft, Old School RuneScape) for the Games tab; the fake home
+  has no installed games.
 - **Default settings**, including `Ctrl+F9` and the save sound on (the test defaults would show
   `Ctrl+Alt+Shift+F12`).
 - **Paths as `~/…`**: a fake home on disk (`target/cc-shot/home`); not under `/tmp`, which can be

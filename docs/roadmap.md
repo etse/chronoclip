@@ -12,7 +12,7 @@ Status: ✅ done · 🚧 in progress · ⬜ not started
 | M5 | Polish: save notification and chime, tray state, start with desktop | ✅ |
 | M6 | Packaging: .deb (Ubuntu/Mint) and AppImage on GitHub Releases | ✅ |
 | M7 | Modern dark UI: Battle.net-style tabs, Discord-like look, custom title bar | ✅ |
-| M8 | Other games: record any game, not just WoW: game detection, window picker, per-game clips | 🚧 |
+| M8 | Other games: record any game, not just WoW: game detection, window picker, per-game clips | ✅ |
 | M9 | Wayland + AMD/Intel: portal/PipeWire capture, GlobalShortcuts portal, VAAPI | ⬜ |
 
 ## M8: Other games
@@ -96,6 +96,8 @@ Detection only reads window properties and `/proc/<pid>/{comm,cmdline,environ}` 
 - [x] Verified in-game: WoW as before; Elden Ring, Satisfactory, Palworld and Path of Exile 2 detected with the right names, clips in their own folders, launchers (Battle.net, Steam) never recorded
   - Maintainer, 2026-11-27, 12-step checklist: all pass (waiting without questions with Battle.net/Steam/Discord open; Games tab with 19 installed games and search; WoW recorded with game sound into `World of Warcraft/`; Elden Ring started meanwhile didn't switch; Choose window switched, clip only Elden Ring; back to WoW after quitting it; Satisfactory, Palworld, Path of Exile 2 recorded by themselves with sound into their folders; Don't record / Record again)
   - Found two bugs, both fixed: every change on the Settings tab crashed the app ("RefCell already borrowed", from the Games-tab work in M8: a `match` kept a borrow of the settings alive while saving them; in a game the window froze); the window had no icon in the taskbar (Slint's `icon` doesn't reach the window with the software renderer; now set through winit from the PNG; probably since M1). Verified with a test instance: 6 setting changes in a row, `_NET_WM_ICON` 256×256 after start and after start in the tray
+
+Closed 2026-11-27 with the maintainer's in-game check (all 12 steps pass) and released as **v0.3.0**, the first beta.
 
 Out of scope: recording several games at once, per-game settings (fps, sound), Wayland (M9), an online game database (no network calls, hard rule 8).
 

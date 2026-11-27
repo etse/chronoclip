@@ -228,6 +228,9 @@ Clips decode without errors in FFmpeg and play in mpv; `moov` is first. Not chec
 - **Launchers' data from their files and environment variables**, not their databases: Lutris's `GAME_NAME` avoids reading its SQLite database; Heroic's library caches are JSON. Lutris and Heroic follow their source code; neither was installed on the maintainer's computer.
 - **Ask, don't guess**: unknown windows that look like games are only recorded after "Record". The Battle.net launcher looks like a Proton game in every way, so launchers are listed explicitly. GameMode is not used (only knows games started with `gamemoderun`), nor the NVIDIA process list (every desktop app uses the GPU).
 - **The games list is shared with the recorder** instead of being part of its settings: changing it never restarts the recorder, so the buffer isn't lost.
+- **Clips this session** live only in memory (the last 10, newest first): Home is about what just happened; the clips folder is the library.
+- **The AppImage adds its own menu entry** (asked once, a switch in Settings): Cinnamon's window list shows a generic icon for a window without a menu entry and ignores the window's own icon (`_NET_WM_ICON`, which Chronoclip now sets at creation through a winit hook, for Alt+Tab and other desktops). The .deb installs an entry, so it never asks there.
+- **A crash found in the maintainer's check**: every Settings change panicked (`RefCell already borrowed`): a `match` on `current.borrow()` keeps the borrow alive across the arms, and `commit` wrote `current`. Read into a local first.
 
 ## Open questions
 
