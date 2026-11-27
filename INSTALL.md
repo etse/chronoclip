@@ -48,7 +48,7 @@ One file that runs on distros with glibc 2.35 or newer: Debian 12+, Fedora 36+, 
    ./Chronoclip-*-x86_64.AppImage
    ```
 
-It needs FUSE 3 (`fusermount3`, package `fuse3`), installed by default on current desktops; without it, start it with `--appimage-extract-and-run`. Keep the file where it is if you turn on *Start in the tray when you log in*: the autostart entry points at the `.AppImage` file (it follows if the file is moved and started from the new place). AppImageLauncher, if installed, may offer to move it to `~/Applications` and add it to the menu.
+It needs FUSE 3 (`fusermount3`, package `fuse3`), installed by default on current desktops; without it, start it with `--appimage-extract-and-run`. Keep the file where it is if you turn on *Start in the tray when you log in*: the autostart entry points at the `.AppImage` file (it follows if the file is moved and started from the new place). AppImageLauncher, if installed, may offer to move it to `~/Applications` and add it to the menu. Otherwise Chronoclip asks once whether to add itself to your app menu (*Show in the app menu* in Settings): a menu entry in `~/.local/share/applications` and its icon in `~/.local/share/icons`, so the taskbar shows Chronoclip's icon instead of a generic one. Like autostart, it follows the `.AppImage` file when that moves; switching it off removes both.
 
 ### Runtime libraries
 
