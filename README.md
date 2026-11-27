@@ -144,7 +144,7 @@ Any of these saves the last *N* minutes (your buffer length) while recording kee
 
 A short rising chime tells you the clip was saved, and a lower falling tone that it wasn't (for example when nothing was recorded yet). A desktop notification shows the clip's length and size, with **Play** and **Show in folder** buttons. Cinnamon hides notifications over fullscreen windows by default (borderless WoW counts), so in-game the chime is what you notice; the notification is waiting when you alt-tab. With *All sound*, the chime is recorded at the start of the next clip.
 
-Clips go to `~/Videos/Chronoclip/Chronoclip_YYYY-MM-DD_HH-MM-SS.mp4` (H.264 + AAC in MP4, plays everywhere, starts instantly in browsers and Discord). The save waits up to two seconds for the moment you pressed the key to be written, then copies the video without re-encoding, so even long clips take seconds. If the WoW window changed size during the buffer, the clip starts at the resize. Each save starts where the previous clip ended, so two clips never contain the same footage.
+Clips go to a folder per game, e.g. `~/Videos/Chronoclip/World of Warcraft/World of Warcraft_YYYY-MM-DD_HH-MM-SS.mp4` (H.264 + AAC in MP4, plays everywhere, starts instantly in browsers and Discord). The save waits up to two seconds for the moment you pressed the key to be written, then copies the video without re-encoding, so even long clips take seconds. If the WoW window changed size during the buffer, the clip starts at the resize. Each save starts where the previous clip ended, so two clips never contain the same footage.
 
 ## Configuration
 

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use chronoclip_core::clips::{check_free_space, partial_path, unique_clip_path};
+use chronoclip_core::clips::{check_free_space, game_folder, partial_path, unique_clip_path};
 use chronoclip_core::disk::{format_duration, format_size};
 
 use crate::buffer::ReplayBuffer;
@@ -34,7 +34,7 @@ impl SavedClip {
             .unwrap_or_default()
     }
 
-    /// e.g. `Chronoclip_2026-11-20_21-04-33.mp4 (10:00, 1.5 GB)`
+    /// e.g. `ELDEN RING_2026-11-20_21-04-33.mp4 (10:00, 1.5 GB)`
     pub fn summary(&self) -> String {
         format!(
             "{} ({}, {})",
@@ -57,18 +57,17 @@ pub fn save_replay(buffer: &Arc<ReplayBuffer>, output_dir: &Path) -> Result<Save
     })?;
     let last_seq = pinned.segments.last().map(|s| s.seq);
 
-    std::fs::create_dir_all(output_dir).map_err(|e| {
-        format!(
-            "Cannot create the clips folder {}: {e}",
-            output_dir.display()
-        )
-    })?;
+    // One folder per game: ~/Videos/Chronoclip/ELDEN RING/ELDEN RING_<date>.mp4
+    let game = buffer.game();
+    let folder = game_folder(output_dir, game.as_deref());
+    std::fs::create_dir_all(&folder)
+        .map_err(|e| format!("Cannot create the clips folder {}: {e}", folder.display()))?;
     let clip_bytes: u64 = pinned.segments.iter().map(|s| s.bytes).sum();
-    if let Some(available) = free_space(output_dir) {
+    if let Some(available) = free_space(&folder) {
         check_free_space(clip_bytes, available).map_err(|e| capitalize(&e.to_string()) + ".")?;
     }
 
-    let path = unique_clip_path(output_dir, chrono::Local::now().naive_local());
+    let path = unique_clip_path(&folder, game.as_deref(), chrono::Local::now().naive_local());
     let partial = partial_path(&path);
     let inputs: Vec<PathBuf> = pinned.segments.iter().map(|s| s.path.clone()).collect();
     tracing::info!(

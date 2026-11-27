@@ -21,6 +21,8 @@ pub struct ReplayBuffer {
     audio_tracks: Mutex<Vec<String>>,
     /// A clip was saved from this buffer (so an empty buffer means "nothing new").
     saved: std::sync::atomic::AtomicBool,
+    /// The game the segments show (one game per buffer: a new game discards the old one).
+    game: Mutex<Option<String>>,
 }
 
 impl ReplayBuffer {
@@ -33,6 +35,7 @@ impl ReplayBuffer {
             changed: Condvar::new(),
             audio_tracks: Mutex::new(Vec::new()),
             saved: std::sync::atomic::AtomicBool::new(false),
+            game: Mutex::new(None),
         }
     }
 
@@ -57,6 +60,16 @@ impl ReplayBuffer {
     /// Recorder: the audio tracks its segments contain (set once, before recording).
     pub fn set_audio_tracks(&self, titles: Vec<String>) {
         *self.audio_tracks.lock().unwrap_or_else(|e| e.into_inner()) = titles;
+    }
+
+    /// Recorder: the game being recorded (names the clips' folder and files).
+    pub fn set_game(&self, game: Option<String>) {
+        *self.game.lock().unwrap_or_else(|e| e.into_inner()) = game;
+    }
+
+    /// The game the buffer holds, if known.
+    pub fn game(&self) -> Option<String> {
+        self.game.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     /// Titles of the audio tracks, in stream order.

@@ -1,4 +1,5 @@
-//! Naming of saved clips and the free-space check before a save.
+//! Naming of saved clips (a folder and file name per game) and the free-space check before a
+//! save.
 
 use std::path::{Path, PathBuf};
 
@@ -6,22 +7,57 @@ use chrono::NaiveDateTime;
 
 use crate::disk::format_size;
 
-const PREFIX: &str = "Chronoclip_";
+const FALLBACK: &str = "Chronoclip";
 const EXTENSION: &str = "mp4";
+/// Longest folder/file name prefix taken from a game name (in characters).
+const MAX_NAME_CHARS: usize = 80;
 
-/// File name for a clip saved at local time `saved_at`, e.g. `Chronoclip_2026-11-20_21-04-33.mp4`.
-/// Sorts chronologically and contains no characters that need quoting in a shell.
-pub fn clip_file_name(saved_at: NaiveDateTime) -> String {
+/// `name` as a folder or file name: without `/ \ : * ? " < > |` and control characters (not
+/// allowed or awkward on Linux, exFAT and NTFS drives), single spaces, no leading or trailing
+/// dots or spaces, at most 80 characters. Empty results become "Chronoclip".
+pub fn safe_file_name(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => ' ',
+            c if c.is_control() => ' ',
+            c => c,
+        })
+        .collect();
+    let joined = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    let short: String = joined.chars().take(MAX_NAME_CHARS).collect();
+    let trimmed = short.trim_matches(|c: char| c == '.' || c.is_whitespace());
+    if trimmed.is_empty() {
+        FALLBACK.to_owned()
+    } else {
+        trimmed.to_owned()
+    }
+}
+
+/// The folder for `game`'s clips inside the clips folder `output_dir`, e.g.
+/// `~/Videos/Chronoclip/ELDEN RING`. Without a game: `output_dir` itself.
+pub fn game_folder(output_dir: &Path, game: Option<&str>) -> PathBuf {
+    match game {
+        Some(game) => output_dir.join(safe_file_name(game)),
+        None => output_dir.to_owned(),
+    }
+}
+
+/// File name for a clip of `game` saved at local time `saved_at`, e.g.
+/// `ELDEN RING_2026-11-20_21-04-33.mp4` (`Chronoclip_…` without a game). Sorts
+/// chronologically within a game's folder.
+pub fn clip_file_name(game: Option<&str>, saved_at: NaiveDateTime) -> String {
     format!(
-        "{PREFIX}{}.{EXTENSION}",
+        "{}_{}.{EXTENSION}",
+        safe_file_name(game.unwrap_or(FALLBACK)),
         saved_at.format("%Y-%m-%d_%H-%M-%S")
     )
 }
 
-/// A path in `dir` for a clip saved at `saved_at` that doesn't exist yet: the plain name, or
-/// with `_2`, `_3`, … appended if two clips are saved in the same second.
-pub fn unique_clip_path(dir: &Path, saved_at: NaiveDateTime) -> PathBuf {
-    let name = clip_file_name(saved_at);
+/// A path in `dir` for a clip of `game` saved at `saved_at` that doesn't exist yet: the plain
+/// name, or with `_2`, `_3`, … appended if two clips are saved in the same second.
+pub fn unique_clip_path(dir: &Path, game: Option<&str>, saved_at: NaiveDateTime) -> PathBuf {
+    let name = clip_file_name(game, saved_at);
     let stem = name.trim_end_matches(&format!(".{EXTENSION}"));
     let taken = |path: &Path| path.exists() || partial_path(path).exists();
     let mut path = dir.join(&name);
@@ -85,29 +121,58 @@ mod tests {
     #[test]
     fn names_sort_by_time() {
         assert_eq!(
-            clip_file_name(at(9, 4, 3)),
+            clip_file_name(None, at(9, 4, 3)),
             "Chronoclip_2026-11-20_09-04-03.mp4"
         );
-        assert!(clip_file_name(at(9, 59, 59)) < clip_file_name(at(10, 0, 0)));
+        assert_eq!(
+            clip_file_name(Some("ELDEN RING"), at(21, 4, 33)),
+            "ELDEN RING_2026-11-20_21-04-33.mp4"
+        );
+        assert!(clip_file_name(Some("x"), at(9, 59, 59)) < clip_file_name(Some("x"), at(10, 0, 0)));
+    }
+
+    #[test]
+    fn game_names_become_safe_file_names() {
+        assert_eq!(safe_file_name("World of Warcraft"), "World of Warcraft");
+        assert_eq!(
+            safe_file_name("Hollow Knight: Silksong"),
+            "Hollow Knight Silksong"
+        );
+        assert_eq!(
+            safe_file_name("Marvel’s Spider-Man: Miles Morales"),
+            "Marvel’s Spider-Man Miles Morales"
+        );
+        assert_eq!(safe_file_name("R.E.P.O."), "R.E.P.O");
+        assert_eq!(safe_file_name("AC/DC <Live>?"), "AC DC Live");
+        assert_eq!(safe_file_name("../../etc"), "etc");
+        assert_eq!(safe_file_name(" \t\n"), "Chronoclip");
+        assert_eq!(safe_file_name("..."), "Chronoclip");
+        assert_eq!(safe_file_name(&"x".repeat(200)).chars().count(), 80);
+        assert_eq!(
+            game_folder(Path::new("/v"), Some("Hollow Knight: Silksong")),
+            PathBuf::from("/v/Hollow Knight Silksong")
+        );
+        assert_eq!(game_folder(Path::new("/v"), None), PathBuf::from("/v"));
     }
 
     #[test]
     fn unique_path_never_overwrites() -> std::io::Result<()> {
         let dir = tempfile::tempdir()?;
         let t = at(21, 4, 33);
-        let first = unique_clip_path(dir.path(), t);
-        assert_eq!(first, dir.path().join("Chronoclip_2026-11-20_21-04-33.mp4"));
+        let game = Some("Factorio");
+        let first = unique_clip_path(dir.path(), game, t);
+        assert_eq!(first, dir.path().join("Factorio_2026-11-20_21-04-33.mp4"));
         std::fs::write(&first, b"x")?;
-        let second = unique_clip_path(dir.path(), t);
+        let second = unique_clip_path(dir.path(), game, t);
         assert_eq!(
             second,
-            dir.path().join("Chronoclip_2026-11-20_21-04-33_2.mp4")
+            dir.path().join("Factorio_2026-11-20_21-04-33_2.mp4")
         );
         // A save in progress also reserves its name.
         std::fs::write(partial_path(&second), b"x")?;
         assert_eq!(
-            unique_clip_path(dir.path(), t),
-            dir.path().join("Chronoclip_2026-11-20_21-04-33_3.mp4")
+            unique_clip_path(dir.path(), game, t),
+            dir.path().join("Factorio_2026-11-20_21-04-33_3.mp4")
         );
         Ok(())
     }

@@ -17,6 +17,7 @@ versions follow [Semantic Versioning](https://semver.org/).
 - **Installed games are found by themselves:** every installed Steam game and known games in Wine
   prefixes (Battle.net through Faugus, Lutris, Heroic, Bottles or Steam). The Games tab lists them;
   *Don't record* switches one off.
+- **A folder per game** for clips: `~/Videos/Chronoclip/ELDEN RING/ELDEN RING_2026-11-27_21-04-33.mp4`.
 - **Search** on the Games tab and in *Choose window*: type part of a name, program or Steam id.
 - Games get their proper name from Steam, Heroic, Lutris or Faugus Launcher (e.g. "ELDEN RING"),
   else the window title.

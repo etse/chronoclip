@@ -336,6 +336,7 @@ fn run(
         }
         last_game = Some(window.pid);
         window_gone = false;
+        buffer.set_game(Some(window.game.name.clone()));
         for track in &tracks {
             track.set_game(Some(GameWindow {
                 pid: window.pid,
