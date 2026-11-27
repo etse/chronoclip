@@ -10,7 +10,7 @@ use chronoclip_capture::{OpenWindow, list_windows};
 use chronoclip_core::disk::{
     estimate_buffer_bytes, format_gb, nominal_bitrate_mbps, tmpfs_warning,
 };
-use chronoclip_core::games::find_game;
+use chronoclip_core::games::{catalog, find_game};
 use chronoclip_core::launchers::Launchers;
 use chronoclip_core::paths::data_dirs;
 use chronoclip_core::settings::{
@@ -176,6 +176,9 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
                         Some(game) if recording == Some(w.id) => {
                             format!("Recording now · {}", game.name)
                         }
+                        Some(game) if catalog().contains(game) => {
+                            format!("Built in: {}", game.name)
+                        }
                         Some(game) => format!("In your games: {}", game.name),
                         None => {
                             let program = w
@@ -255,8 +258,8 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
         let current = Rc::clone(&current);
         let commit = Rc::clone(&commit);
         move |index| {
-            // Row 0 is the built-in World of Warcraft; the user's games follow.
-            let Some(i) = usize::try_from(index).ok().and_then(|i| i.checked_sub(1)) else {
+            // Rows of "Your games" are the settings' games, in order.
+            let Ok(i) = usize::try_from(index) else {
                 return;
             };
             let mut settings = current.borrow().clone();
@@ -526,17 +529,19 @@ fn show_settings(window: &MainWindow, settings: &Settings, paths: &Paths) {
     window.set_custom_title_bar(settings.custom_title_bar);
     window.set_buffer_dir(paths.contract_home(&settings.buffer_dir(paths)).into());
     window.set_output_dir(paths.contract_home(&settings.output_dir(paths)).into());
-    let games: Vec<GameRow> = settings
-        .all_games()
-        .iter()
-        .enumerate()
-        .map(|(i, game)| GameRow {
-            name: game.name.clone().into(),
-            detail: game.describe().into(),
-            builtin: i == 0,
-        })
-        .collect();
-    window.set_games(ModelRc::new(VecModel::from(games)));
+    let rows = |games: &[Game], builtin: bool| -> ModelRc<GameRow> {
+        let rows: Vec<GameRow> = games
+            .iter()
+            .map(|game| GameRow {
+                name: game.name.clone().into(),
+                detail: game.describe().into(),
+                builtin,
+            })
+            .collect();
+        ModelRc::new(VecModel::from(rows))
+    };
+    window.set_games(rows(&settings.games, false));
+    window.set_builtin_games(rows(catalog(), true));
 }
 
 fn read_settings(window: &MainWindow, paths: &Paths, games: Vec<Game>) -> Result<Settings, String> {

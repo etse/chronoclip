@@ -48,6 +48,7 @@ export component MainWindow inherits Window {
     callback show-last-clip();
     // Games (Settings) and the window picker.
     in property <[GameRow]> games;
+    in property <[GameRow]> builtin-games;
     in property <[WindowRow]> open-windows;
     in-out property <bool> picker-open: false;
     callback choose-window();
@@ -156,6 +157,7 @@ export component MainWindow inherits Window {
 
         if root.current-tab == 1: GamesPage {
             games: root.games;
+            builtin-games: root.builtin-games;
             message: root.message;
             message-is-error: root.message-is-error;
             add-game => {

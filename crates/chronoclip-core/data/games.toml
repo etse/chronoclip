@@ -1,0 +1,45 @@
+# Games Chronoclip recognizes out of the box. Compiled into the program; users add their own
+# games in the app (Games tab), not here.
+#
+# Add a game with a pull request: one [[game]] per game, sorted by name. See CONTRIBUTING.md
+# ("Add a game to the catalog"). `cargo test -p chronoclip-core catalog` checks the file.
+#
+#   name            Shown in the app and used for clip folders. The store's spelling.
+#   steam_app_ids   Steam app ids (the number in store.steampowered.com/app/<id>). Preferred:
+#                   Steam and Proton tag the game's window with it.
+#   executables     File names of the program that opens the game window (not a launcher or
+#                   bootstrapper), as found in the install folder. Case doesn't matter.
+#   title_contains  Only if nothing else works: text the window title contains.
+#
+# Every id and executable must come from somewhere checkable (an install, the Steam store,
+# PCGamingWiki). Note the source in a comment.
+
+[[game]]
+# Executables: Faugus/Battle.net installs (Retail, Classic, PTR, Beta), Chronoclip's reference setup.
+name = "World of Warcraft"
+executables = ["Wow.exe", "WowClassic.exe", "WowT.exe", "WowB.exe", "WowClassicT.exe", "WowClassicB.exe"]
+
+[[game]]
+# Steam manifest 1245620; Game/eldenring.exe in the Steam install (start_protected_game.exe only starts it).
+name = "ELDEN RING"
+steam_app_ids = [1245620]
+executables = ["eldenring.exe"]
+
+[[game]]
+# Steam manifest 1623730; Pal/Binaries/Win64/Palworld-Win64-Shipping.exe in the Steam install.
+name = "Palworld"
+steam_app_ids = [1623730]
+executables = ["Palworld-Win64-Shipping.exe"]
+
+[[game]]
+# Steam manifest 2694490; PathOfExileSteam.exe in the Steam install.
+name = "Path of Exile 2"
+steam_app_ids = [2694490]
+executables = ["PathOfExileSteam.exe"]
+
+[[game]]
+# Steam manifest 526870; Engine/Binaries/Win64/FactoryGameSteam-Win64-Shipping.exe in the Steam
+# install (FactoryGameSteam.exe only starts it).
+name = "Satisfactory"
+steam_app_ids = [526870]
+executables = ["FactoryGameSteam-Win64-Shipping.exe"]

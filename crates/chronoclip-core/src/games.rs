@@ -4,20 +4,58 @@
 //! owning process's names); [`find_game`] then picks the game it belongs to. Pure logic, so
 //! matching rules are unit-tested here.
 
+use std::sync::OnceLock;
+
 use serde::{Deserialize, Serialize};
 
 /// Name of the built-in World of Warcraft entry.
 pub const WORLD_OF_WARCRAFT: &str = "World of Warcraft";
 
-/// Executable names of World of Warcraft clients (Retail, Classic, PTR, Beta).
-const WOW_EXECUTABLES: &[&str] = &[
-    "Wow.exe",
-    "WowClassic.exe",
-    "WowT.exe",
-    "WowB.exe",
-    "WowClassicT.exe",
-    "WowClassicB.exe",
-];
+/// The built-in games catalog (`data/games.toml`), compiled in.
+const CATALOG: &str = include_str!("../data/games.toml");
+
+/// The built-in games, in the file's order. The file is checked by the `catalog_*` tests, so
+/// it always parses; if it somehow doesn't, there are no built-in games (logged).
+pub fn catalog() -> &'static [Game] {
+    static GAMES: OnceLock<Vec<Game>> = OnceLock::new();
+    GAMES.get_or_init(|| match parse_catalog(CATALOG) {
+        Ok(games) => games,
+        Err(e) => {
+            tracing::error!("the built-in games catalog is broken: {e}");
+            Vec::new()
+        }
+    })
+}
+
+/// Strict: a misspelled key (`executable = …`) is an error in the catalog, unlike in the
+/// settings file, which must keep loading when a newer version wrote fields we don't know.
+fn parse_catalog(text: &str) -> Result<Vec<Game>, toml::de::Error> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Catalog {
+        game: Vec<Entry>,
+    }
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Entry {
+        name: String,
+        #[serde(default)]
+        executables: Vec<String>,
+        #[serde(default)]
+        steam_app_ids: Vec<u32>,
+        title_contains: Option<String>,
+    }
+    Ok(toml::from_str::<Catalog>(text)?
+        .game
+        .into_iter()
+        .map(|e| Game {
+            name: e.name,
+            executables: e.executables,
+            steam_app_ids: e.steam_app_ids,
+            title_contains: e.title_contains,
+        })
+        .collect())
+}
 
 /// A game and how to recognize its window. At least one way to match must be set.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,6 +67,10 @@ pub struct Game {
     /// Windows executable name, e.g. `eldenring.exe`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub executables: Vec<String>,
+    /// Steam app ids: Proton tags the game's window with it (WM_CLASS `steam_app_<id>`) and
+    /// Steam sets `SteamAppId` for the game's processes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steam_app_ids: Vec<u32>,
     /// Text the window title contains (case-insensitive). Least reliable; for windows without
     /// a usable executable name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -36,13 +78,17 @@ pub struct Game {
 }
 
 impl Game {
-    /// World of Warcraft, always in the games list.
+    /// World of Warcraft from the catalog.
     pub fn world_of_warcraft() -> Self {
-        Self {
-            name: WORLD_OF_WARCRAFT.to_owned(),
-            executables: WOW_EXECUTABLES.iter().map(|&e| e.to_owned()).collect(),
-            title_contains: None,
-        }
+        catalog()
+            .iter()
+            .find(|g| g.name == WORLD_OF_WARCRAFT)
+            .cloned()
+            // Only if the catalog were broken (the tests rule that out).
+            .unwrap_or_else(|| Self {
+                executables: vec!["Wow.exe".to_owned()],
+                ..Self::by_title(WORLD_OF_WARCRAFT)
+            })
     }
 
     /// A game matched by window title only (the `CHRONOCLIP_WINDOW` override and tests).
@@ -50,6 +96,7 @@ impl Game {
         Self {
             name: title.to_owned(),
             executables: Vec::new(),
+            steam_app_ids: Vec::new(),
             title_contains: Some(title.to_owned()),
         }
     }
@@ -58,6 +105,7 @@ impl Game {
     pub fn is_valid(&self) -> bool {
         !self.name.trim().is_empty()
             && (self.executables.iter().any(|e| !e.trim().is_empty())
+                || self.steam_app_ids.iter().any(|&id| id != 0)
                 || self
                     .title_contains
                     .as_deref()
@@ -80,13 +128,15 @@ impl Game {
             .iter()
             .chain(&window.process_names)
             .any(|n| self.has_executable(n));
+        let by_steam = crate::launchers::steam_app_id(window)
+            .is_some_and(|id| self.steam_app_ids.contains(&id));
         let by_title = self
             .title_contains
             .as_deref()
             .map(str::trim)
             .filter(|t| !t.is_empty())
             .is_some_and(|t| window.title.to_lowercase().contains(&t.to_lowercase()));
-        by_exe || by_title
+        by_exe || by_steam || by_title
     }
 
     /// A new game entry for a window the user picked: named by its launcher (`launcher_name`,
@@ -104,16 +154,20 @@ impl Game {
         } else {
             title.to_owned()
         };
+        let steam_app_ids: Vec<u32> = crate::launchers::steam_app_id(window).into_iter().collect();
         match exe {
             Some(exe) => Self {
                 name,
                 executables: vec![exe],
+                steam_app_ids,
                 title_contains: None,
             },
+            // A Steam id is enough to recognize it; the title only when there's nothing else.
             None => Self {
                 name,
                 executables: Vec::new(),
-                title_contains: Some(title.to_owned()),
+                title_contains: steam_app_ids.is_empty().then(|| title.to_owned()),
+                steam_app_ids,
             },
         }
     }
@@ -138,7 +192,18 @@ impl Game {
             1..=3 => Some(exes.join(", ")),
             n => Some(format!("{} and {} more", exes[..2].join(", "), n - 2)),
         };
-        [exes, title]
+        let steam = match self.steam_app_ids.as_slice() {
+            [] => None,
+            [id] => Some(format!("Steam app {id}")),
+            ids => Some(format!(
+                "Steam apps {}",
+                ids.iter()
+                    .map(u32::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+        };
+        [exes, steam, title]
             .into_iter()
             .flatten()
             .collect::<Vec<_>>()
@@ -149,6 +214,10 @@ impl Game {
     /// adding `other` would be a duplicate.
     pub fn covers(&self, other: &Game) -> bool {
         other.executables.iter().any(|e| self.has_executable(e))
+            || other
+                .steam_app_ids
+                .iter()
+                .any(|id| self.steam_app_ids.contains(id))
             || other.title_contains.as_deref().is_some_and(|t| {
                 self.title_contains
                     .as_deref()
@@ -302,6 +371,7 @@ mod tests {
             Game::world_of_warcraft(),
             Game {
                 name: "Elden Ring".into(),
+                steam_app_ids: Vec::new(),
                 executables: vec!["eldenring.exe".into()],
                 title_contains: None,
             },
@@ -333,8 +403,9 @@ mod tests {
         );
         assert_eq!(elden.name, "ELDEN RING™");
         assert_eq!(elden.executables, ["eldenring.exe"]);
+        assert_eq!(elden.steam_app_ids, [1_245_620]);
         assert_eq!(elden.title_contains, None);
-        assert_eq!(elden.describe(), "eldenring.exe");
+        assert_eq!(elden.describe(), "eldenring.exe · Steam app 1245620");
         // Native game: the program file.
         let factorio = Game::from_window(
             &facts(
@@ -404,11 +475,104 @@ mod tests {
     }
 
     #[test]
+    fn matches_by_steam_app_id() {
+        let elden = Game {
+            name: "ELDEN RING".into(),
+            executables: Vec::new(),
+            steam_app_ids: vec![1_245_620],
+            title_contains: None,
+        };
+        assert!(elden.is_valid());
+        assert!(elden.matches(&facts("ELDEN RING", &["steam_app_1245620"], &[])));
+        let mut env = facts("x", &[], &["start.exe"]);
+        env.env = vec![("SteamAppId".into(), "1245620".into())];
+        assert!(elden.matches(&env));
+        assert!(!elden.matches(&facts("ELDEN RING", &["steam_app_526870"], &[])));
+        // A picked Proton game without a usable executable: the Steam id instead of the title.
+        let picked = Game::from_window(
+            &facts("Some Game", &["steam_app_42"], &["wine64-preloader"]),
+            None,
+        );
+        assert_eq!(picked.steam_app_ids, [42]);
+        assert_eq!(picked.title_contains, None);
+        assert!(elden.covers(&Game {
+            name: "x".into(),
+            ..elden.clone()
+        }));
+    }
+
+    /// The catalog file parses, and every entry is usable and unique (checked on every pull
+    /// request by CI).
+    #[test]
+    fn catalog_entries_are_valid_and_unique() {
+        let games = parse_catalog(CATALOG).unwrap_or_else(|e| panic!("data/games.toml: {e}"));
+        assert_eq!(games.len(), catalog().len());
+        assert!(games.iter().any(|g| g.name == WORLD_OF_WARCRAFT));
+        let mut names = std::collections::HashSet::new();
+        let mut exes = std::collections::HashMap::new();
+        let mut ids = std::collections::HashMap::new();
+        for game in &games {
+            assert!(
+                game.is_valid(),
+                "{:?}: needs a name and a way to match",
+                game.name
+            );
+            assert_eq!(
+                game.name,
+                game.name.trim(),
+                "{:?}: spaces around the name",
+                game.name
+            );
+            assert!(
+                names.insert(game.name.to_lowercase()),
+                "{:?} is listed twice",
+                game.name
+            );
+            for exe in &game.executables {
+                assert_eq!(exe, exe.trim(), "{:?}: spaces around {exe:?}", game.name);
+                assert!(
+                    !exe.contains(['/', '\\']),
+                    "{:?}: {exe:?} must be a file name, not a path",
+                    game.name
+                );
+                let generic = WindowFacts {
+                    process_names: vec![exe.clone()],
+                    ..WindowFacts::default()
+                };
+                assert!(
+                    generic.executable().is_some(),
+                    "{:?}: {exe:?} is a generic program (Wine, Python, …)",
+                    game.name
+                );
+                if let Some(other) = exes.insert(exe.to_lowercase(), &game.name) {
+                    panic!("{exe:?} is used by both {other:?} and {:?}", game.name);
+                }
+            }
+            for &id in &game.steam_app_ids {
+                assert_ne!(id, 0, "{:?}: Steam app id 0", game.name);
+                if let Some(other) = ids.insert(id, &game.name) {
+                    panic!(
+                        "Steam app {id} is used by both {other:?} and {:?}",
+                        game.name
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn catalog_rejects_mistakes() {
+        assert!(parse_catalog("[[game]]\nname = \"X\"\nexecutable = [\"x.exe\"]\n").is_err()); // typo
+        assert!(parse_catalog("[[game]]\nname = \"X\"\nsteam_app_ids = [\"12\"]\n").is_err());
+    }
+
+    #[test]
     fn entries_without_rules_are_invalid() {
         assert!(Game::world_of_warcraft().is_valid());
         assert!(Game::by_title("x").is_valid());
         let empty = Game {
             name: "Nothing".into(),
+            steam_app_ids: Vec::new(),
             executables: vec![" ".into()],
             title_contains: Some(String::new()),
         };

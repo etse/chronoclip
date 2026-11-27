@@ -217,10 +217,13 @@ impl Settings {
         name
     }
 
-    /// Every game to look for, in priority order: World of Warcraft, then the user's games.
+    /// Every game to look for, in priority order: the user's games (their names win where a
+    /// window matches both), then the built-in catalog.
     pub fn all_games(&self) -> Vec<Game> {
-        std::iter::once(Game::world_of_warcraft())
-            .chain(self.games.iter().cloned())
+        self.games
+            .iter()
+            .cloned()
+            .chain(crate::games::catalog().iter().cloned())
             .collect()
     }
 
@@ -312,6 +315,7 @@ mod tests {
         let path = dir.path().join("settings.toml");
         let elden = Game {
             name: "Elden Ring".into(),
+            steam_app_ids: Vec::new(),
             executables: vec!["eldenring.exe".into()],
             title_contains: None,
         };
@@ -323,10 +327,12 @@ mod tests {
         s.save(&path)?;
         assert_eq!(Settings::load(&path)?, s);
         let names: Vec<_> = s.all_games().into_iter().map(|g| g.name).collect();
-        assert_eq!(names, ["World of Warcraft", "Elden Ring"]);
+        assert_eq!(names[..2], ["Elden Ring", "World of Warcraft"]);
+        assert_eq!(names.len(), 1 + crate::games::catalog().len());
 
         let broken = Game {
             name: "Broken".into(),
+            steam_app_ids: Vec::new(),
             executables: Vec::new(),
             title_contains: None,
         };
@@ -338,10 +344,19 @@ mod tests {
         assert_eq!(s.sanitized().games, std::slice::from_ref(&elden));
 
         let mut s = Settings::default();
-        assert_eq!(s.add_game(elden.clone()), "Elden Ring");
-        assert_eq!(s.add_game(elden.clone()), "Elden Ring");
+        // Built in: not added again, the catalog's name is used.
+        assert_eq!(s.add_game(elden), "ELDEN RING");
         assert_eq!(s.add_game(Game::world_of_warcraft()), "World of Warcraft");
-        assert_eq!(s.games, [elden]);
+        assert!(s.games.is_empty());
+        let hades = Game {
+            name: "Hades".into(),
+            steam_app_ids: Vec::new(),
+            executables: vec!["Hades.exe".into()],
+            title_contains: None,
+        };
+        assert_eq!(s.add_game(hades.clone()), "Hades");
+        assert_eq!(s.add_game(hades.clone()), "Hades");
+        assert_eq!(s.games, [hades]);
         Ok(())
     }
 
