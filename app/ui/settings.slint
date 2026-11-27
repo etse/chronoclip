@@ -145,6 +145,9 @@ export component SettingsPage {
     in-out property <bool> microphone;
     in-out property <bool> save-sound;
     in-out property <bool> autostart;
+    // Running as an AppImage: the "Show in the app menu" switch is shown.
+    in property <bool> appimage;
+    in-out property <bool> menu-entry;
     in-out property <bool> custom-title-bar;
     in-out property <string> buffer-dir;
     in-out property <string> output-dir;
@@ -160,6 +163,7 @@ export component SettingsPage {
     callback reset-defaults();
     callback open-folder(string);
     callback autostart-toggled(bool);
+    callback menu-entry-toggled(bool);
     callback hotkey-captured(string, bool, bool, bool, bool);
 
     ScrollView {
@@ -360,6 +364,20 @@ export component SettingsPage {
                             checked <=> root.autostart;
                             toggled(on) => {
                                 root.autostart-toggled(on);
+                            }
+                        }
+                    }
+
+                    if root.appimage: Divider { }
+
+                    if root.appimage: Row {
+                        title: "Show in the app menu";
+                        description: "Adds Chronoclip to your app menu, so the taskbar shows its icon (from the next start). For the AppImage.";
+                        Toggle {
+                            label: "Show Chronoclip in the app menu";
+                            checked <=> root.menu-entry;
+                            toggled(on) => {
+                                root.menu-entry-toggled(on);
                             }
                         }
                     }

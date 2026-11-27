@@ -19,6 +19,7 @@ pub mod hotkey;
 pub mod installed;
 pub mod ipc;
 pub mod launchers;
+pub mod menu_entry;
 pub mod paths;
 pub mod segments;
 pub mod settings;

@@ -28,7 +28,7 @@ pub fn desktop_entry(exe: &Path) -> String {
 /// Quote one argument for an `Exec=` key (Desktop Entry spec): wrap it in double quotes,
 /// backslash-escape `"` `` ` `` `$` `\`, then apply the string-value escaping (`\` → `\\`)
 /// and double `%` (field codes).
-fn exec_argument(arg: &str) -> String {
+pub(crate) fn exec_argument(arg: &str) -> String {
     let mut quoted = String::from("\"");
     for c in arg.chars() {
         if matches!(c, '"' | '`' | '$' | '\\') {

@@ -248,6 +248,9 @@ export component HomePage {
     in property <[ClipRow]> clips;
     callback save-replay();
     callback choose-window();
+    // AppImage, asked once: add Chronoclip to the app menu (taskbar icon)?
+    in property <bool> offer-menu-entry;
+    callback answer-menu-entry(bool);
     // "Record this game?" ("" = nothing to ask).
     in property <string> suggestion-name;
     in property <string> suggestion-detail;
@@ -332,6 +335,66 @@ export component HomePage {
                     ProgressBar {
                         value: root.buffer-fraction;
                         fill: root.state == RecState.recording ? Theme.accent : Theme.border-strong;
+                    }
+                }
+            }
+        }
+
+        if root.offer-menu-entry: Rectangle {
+            border-radius: Theme.radius-large;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.border;
+            HorizontalLayout {
+                padding: Theme.space-l;
+                spacing: Theme.space-l;
+                VerticalLayout {
+                    alignment: center;
+                    Icon {
+                        source: @image-url("icons/lucide/app-window.svg");
+                        color: Theme.accent;
+                        size: 22px;
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: "Add Chronoclip to your app menu?";
+                        color: Theme.text;
+                        font-size: Theme.font-body;
+                        font-weight: 700;
+                    }
+
+                    Text {
+                        text: "Then it's in your menu, and the taskbar shows its icon instead of a generic one (from the next start). You can change it in Settings.";
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                        wrap: word-wrap;
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    Button {
+                        text: "Add";
+                        kind: ButtonKind.primary;
+                        clicked => {
+                            root.answer-menu-entry(true);
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    Button {
+                        text: "Not now";
+                        kind: ButtonKind.ghost;
+                        clicked => {
+                            root.answer-menu-entry(false);
+                        }
                     }
                 }
             }

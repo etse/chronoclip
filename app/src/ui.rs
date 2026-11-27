@@ -13,7 +13,8 @@ use chronoclip_core::disk::{
 use chronoclip_core::games::{catalog, find_game, matches_query};
 use chronoclip_core::installed::InstalledGame;
 use chronoclip_core::launchers::Launchers;
-use chronoclip_core::paths::{config_home, data_home};
+use chronoclip_core::menu_entry;
+use chronoclip_core::paths::{config_home, data_dirs, data_home};
 use chronoclip_core::settings::{
     AudioMode, DEFAULT_FPS, EncoderPreference, SUPPORTED_FPS, Settings,
 };
@@ -456,6 +457,76 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
         }
     });
 
+    // "Show in the app menu" (AppImage only): our menu entry and icons, not a setting.
+    let appimage = std::env::var_os("APPIMAGE")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute() && p.is_file());
+    let user_data = data_home(&paths.home_dir);
+    if let Some(app) = &appimage {
+        match menu_entry::refresh(&user_data, app) {
+            Ok(true) => tracing::info!("app menu entry now starts {}", app.display()),
+            Ok(false) => {}
+            Err(e) => tracing::warn!("could not update the app menu entry: {e}"),
+        }
+        let elsewhere = menu_entry::installed_elsewhere(&data_dirs(&paths.home_dir));
+        let ours = menu_entry::is_enabled(&user_data);
+        window.set_appimage(!elsewhere);
+        window.set_menu_entry(ours);
+        window.set_offer_menu_entry(!elsewhere && !ours && !settings.menu_entry_offered);
+    }
+    let set_menu_entry = {
+        let weak = window.as_weak();
+        let user_data = user_data.clone();
+        move |on: bool| {
+            let Some(window) = weak.upgrade() else { return };
+            let result = match (&appimage, on) {
+                (Some(app), true) => menu_entry::enable(&user_data, app, MENU_ICONS)
+                    .inspect(|()| refresh_icon_cache(&user_data)),
+                (None, true) => Err(std::io::Error::other("not running as an AppImage")),
+                (_, false) => menu_entry::disable(&user_data, &MENU_ICON_SIZES),
+            };
+            match result {
+                Ok(()) => {
+                    tracing::info!(on, "app menu entry changed");
+                    let text = if on {
+                        "Chronoclip is in your app menu. The taskbar shows its icon from the next start."
+                    } else {
+                        "Chronoclip was removed from your app menu."
+                    };
+                    set_message(&window, text, false);
+                }
+                Err(e) => set_message(
+                    &window,
+                    &format!("Could not change the app menu: {e}"),
+                    true,
+                ),
+            }
+            window.set_menu_entry(menu_entry::is_enabled(&user_data));
+        }
+    };
+    let set_menu_entry = Rc::new(set_menu_entry);
+    window.on_menu_entry_toggled({
+        let set_menu_entry = Rc::clone(&set_menu_entry);
+        move |on| set_menu_entry(on)
+    });
+    window.on_answer_menu_entry({
+        let weak = window.as_weak();
+        let current = Rc::clone(&current);
+        let commit = Rc::clone(&commit);
+        move |add| {
+            let Some(window) = weak.upgrade() else { return };
+            window.set_offer_menu_entry(false);
+            let mut settings = current.borrow().clone();
+            settings.menu_entry_offered = true;
+            commit(settings, "");
+            if add {
+                set_menu_entry(true);
+            } else {
+                set_message(&window, "You can add it later in Settings.", false);
+            }
+        }
+    });
+
     window.on_reset_defaults({
         let weak = window.as_weak();
         let paths = Rc::clone(&paths);
@@ -716,6 +787,45 @@ fn show_settings(window: &MainWindow, settings: &Settings, paths: &Paths) {
     window.set_output_dir(paths.contract_home(&settings.output_dir(paths)).into());
 }
 
+/// Icon sizes written for the app menu entry (the .deb's PNGs).
+const MENU_ICON_SIZES: [u32; 4] = [48, 64, 128, 256];
+const MENU_ICONS: &[(u32, &[u8])] = &[
+    (
+        48,
+        include_bytes!("../../packaging/icons/hicolor/48x48/apps/io.github.etse.chronoclip.png"),
+    ),
+    (
+        64,
+        include_bytes!("../../packaging/icons/hicolor/64x64/apps/io.github.etse.chronoclip.png"),
+    ),
+    (
+        128,
+        include_bytes!("../../packaging/icons/hicolor/128x128/apps/io.github.etse.chronoclip.png"),
+    ),
+    (
+        256,
+        include_bytes!("../../packaging/icons/hicolor/256x256/apps/io.github.etse.chronoclip.png"),
+    ),
+];
+
+/// GTK keeps using a theme's `icon-theme.cache` while it looks current, so new icons in a
+/// theme that has one stay invisible; rebuild it (best effort, only where one exists).
+fn refresh_icon_cache(data_home: &Path) {
+    let theme = data_home.join("icons/hicolor");
+    if !theme.join("icon-theme.cache").is_file() {
+        return;
+    }
+    match Command::new("gtk-update-icon-cache")
+        .args(["-f", "-t", "-q"])
+        .arg(&theme)
+        .status()
+    {
+        Ok(status) if status.success() => {}
+        Ok(status) => tracing::debug!("gtk-update-icon-cache: {status}"),
+        Err(e) => tracing::debug!("gtk-update-icon-cache: {e}"),
+    }
+}
+
 /// Index of the Games tab in the title bar (Home · Games · Settings · About).
 const GAMES_TAB: i32 = 1;
 
@@ -832,6 +942,7 @@ fn read_settings(window: &MainWindow, paths: &Paths, base: &Settings) -> Result<
         microphone: window.get_microphone(),
         save_sound: window.get_save_sound(),
         custom_title_bar: window.get_custom_title_bar(),
+        menu_entry_offered: base.menu_entry_offered,
         buffer_dir: dir_setting(&window.get_buffer_dir(), &paths.default_buffer_dir, paths),
         output_dir: dir_setting(&window.get_output_dir(), &paths.default_output_dir, paths),
         games: base.games.clone(),

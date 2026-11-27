@@ -64,6 +64,9 @@ pub struct Settings {
     pub save_sound: bool,
     /// Frameless window with Chronoclip's own title bar; off: the desktop's title bar.
     pub custom_title_bar: bool,
+    /// The AppImage asked once whether to add Chronoclip to the app menu (answered either
+    /// way; the Settings switch stays).
+    pub menu_entry_offered: bool,
     /// `None` means [`Paths::default_buffer_dir`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub buffer_dir: Option<PathBuf>,
@@ -91,6 +94,7 @@ impl Default for Settings {
             microphone: false,
             save_sound: true,
             custom_title_bar: true,
+            menu_entry_offered: false,
             buffer_dir: None,
             output_dir: None,
             games: Vec::new(),
@@ -438,6 +442,7 @@ mod tests {
             microphone: true,
             save_sound: false,
             custom_title_bar: false,
+            menu_entry_offered: true,
             buffer_dir: Some("/mnt/ssd/buffer".into()),
             output_dir: None,
             games: vec![Game::by_title("Factorio")],
