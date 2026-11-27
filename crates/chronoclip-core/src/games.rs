@@ -507,6 +507,10 @@ mod tests {
     fn catalog_entries_are_valid_and_unique() {
         let games = parse_catalog(CATALOG).unwrap_or_else(|e| panic!("data/games.toml: {e}"));
         assert_eq!(games.len(), catalog().len());
+        let names: Vec<String> = games.iter().map(|g| g.name.to_lowercase()).collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        assert_eq!(names, sorted, "keep data/games.toml sorted by name");
         assert!(games.iter().any(|g| g.name == WORLD_OF_WARCRAFT));
         let mut names = std::collections::HashSet::new();
         let mut exes = std::collections::HashMap::new();

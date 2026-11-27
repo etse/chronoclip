@@ -1,5 +1,5 @@
-// Games page: the games Chronoclip records (World of Warcraft built in, games you added),
-// with Remove, and the button that opens the window picker.
+// Games page: your games, the games installed on this computer, the ones you switched off and
+// the rest of the built-in catalog; and the button that opens the window picker.
 
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
@@ -10,13 +10,15 @@ export struct GameRow {
     name: string,
     // How it's recognized, e.g. "eldenring.exe".
     detail: string,
-    // From the built-in catalog: can't be removed.
-    builtin: bool,
+    // The row's button: "Remove", "Don't record", "Record again", or "" for none.
+    action: string,
+    // Highlighted icon (installed or built-in games).
+    known: bool,
 }
 
 component GameItem {
     in property <GameRow> game;
-    callback remove();
+    callback action();
 
     min-height: 60px;
 
@@ -31,10 +33,10 @@ component GameItem {
                 width: 36px;
                 height: 36px;
                 border-radius: Theme.radius;
-                background: root.game.builtin ? Theme.accent-soft : Theme.surface-raised;
+                background: root.game.known ? Theme.accent-soft : Theme.surface-raised;
                 Icon {
                     source: @image-url("icons/lucide/gamepad-2.svg");
-                    color: root.game.builtin ? Theme.accent : Theme.text-muted;
+                    color: root.game.known ? Theme.accent : Theme.text-muted;
                     size: 18px;
                 }
             }
@@ -62,15 +64,15 @@ component GameItem {
 
         VerticalLayout {
             alignment: center;
-            if !root.game.builtin: Button {
-                text: "Remove";
+            if root.game.action != "": Button {
+                text: root.game.action;
                 kind: ButtonKind.ghost;
                 has-icon: true;
-                icon: @image-url("icons/lucide/x.svg");
+                icon: root.game.action == "Record again" ? @image-url("icons/lucide/rotate-ccw.svg") : @image-url("icons/lucide/x.svg");
                 height-hint: 30px;
                 font-size: Theme.font-small;
                 clicked => {
-                    root.remove();
+                    root.action();
                 }
             }
         }
@@ -88,7 +90,7 @@ component GroupTitle inherits Text {
 /// Games in one card, with separators.
 component GameList inherits Card {
     in property <[GameRow]> games;
-    callback remove(int);
+    callback action(int);
 
     VerticalLayout {
         padding-top: Theme.space-xs;
@@ -101,8 +103,8 @@ component GameList inherits Card {
             }
             GameItem {
                 game: game;
-                remove => {
-                    root.remove(index);
+                action => {
+                    root.action(index);
                 }
             }
         }
@@ -112,12 +114,15 @@ component GameList inherits Card {
 export component GamesPage {
     // Games the user added (removable) and the built-in catalog.
     in property <[GameRow]> games;
+    in property <[GameRow]> installed-games;
+    in property <[GameRow]> ignored-games;
     in property <[GameRow]> builtin-games;
     // Result of the last add/remove, or an error.
     in property <string> message;
     in property <bool> message-is-error;
     callback add-game();
-    callback remove-game(int);
+    // The button of row `index` in a section: 0 yours, 1 installed, 2 not recorded, 3 built in.
+    callback game-action(int, int);
 
     ScrollView {
         HorizontalLayout {
@@ -175,8 +180,8 @@ export component GamesPage {
 
                 if root.games.length > 0: GameList {
                     games: root.games;
-                    remove(index) => {
-                        root.remove-game(index);
+                    action(index) => {
+                        root.game-action(0, index);
                     }
                 }
 
@@ -188,11 +193,43 @@ export component GamesPage {
                 }
 
                 GroupTitle {
-                    text: "BUILT IN (" + root.builtin-games.length + ")";
+                    text: "INSTALLED ON THIS COMPUTER (" + root.installed-games.length + ")";
                 }
 
-                GameList {
+                if root.installed-games.length > 0: GameList {
+                    games: root.installed-games;
+                    action(index) => {
+                        root.game-action(1, index);
+                    }
+                }
+
+                if root.installed-games.length == 0: Text {
+                    text: "No Steam games or known games in Wine prefixes found.";
+                    color: Theme.text-faint;
+                    font-size: Theme.font-small;
+                    wrap: word-wrap;
+                }
+
+                if root.ignored-games.length > 0: GroupTitle {
+                    text: "NOT RECORDED (" + root.ignored-games.length + ")";
+                }
+
+                if root.ignored-games.length > 0: GameList {
+                    games: root.ignored-games;
+                    action(index) => {
+                        root.game-action(2, index);
+                    }
+                }
+
+                if root.builtin-games.length > 0: GroupTitle {
+                    text: "OTHER BUILT-IN GAMES (" + root.builtin-games.length + ")";
+                }
+
+                if root.builtin-games.length > 0: GameList {
                     games: root.builtin-games;
+                    action(index) => {
+                        root.game-action(3, index);
+                    }
                 }
             }
         }

@@ -55,8 +55,6 @@ pub struct RecorderConfig {
     pub encoder: EncoderPreference,
     pub audio: AudioMode,
     pub microphone: bool,
-    /// Games to look for, in priority order.
-    pub games: Vec<Game>,
 }
 
 impl RecorderConfig {
@@ -114,8 +112,12 @@ impl Recorder {
     /// `current` is the window to stay with: the recorder prefers it when looking for a game
     /// and sets it to the window it records (cleared when no game window is open). Shared, so
     /// it survives restarts and the window picker can point it elsewhere.
+    /// `games` is the list of games to look for, in priority order; shared, so it can change
+    /// (a game added, removed, newly installed) without restarting the recorder. A session ends
+    /// when its game is no longer in the list.
     pub fn start(
         config: RecorderConfig,
+        games: Arc<Mutex<Vec<Game>>>,
         current: Arc<Mutex<Option<u64>>>,
         on_status: impl Fn(RecorderStatus) + Send + Sync + 'static,
     ) -> Self {
@@ -130,7 +132,17 @@ impl Recorder {
             let on_status: Arc<StatusFn> = Arc::new(on_status);
             thread::Builder::new()
                 .name("recorder".into())
-                .spawn(move || run(config, &current, &stop, retention_secs, &buffer, on_status))
+                .spawn(move || {
+                    run(
+                        config,
+                        &games,
+                        &current,
+                        &stop,
+                        retention_secs,
+                        &buffer,
+                        on_status,
+                    )
+                })
         };
         let thread = thread
             .inspect_err(|e| tracing::error!("could not start recorder thread: {e}"))
@@ -208,6 +220,7 @@ unsafe impl Send for SendMessage {}
 
 fn run(
     config: RecorderConfig,
+    games: &Mutex<Vec<Game>>,
     current: &Mutex<Option<u64>>,
     stop: &AtomicBool,
     retention_secs: Arc<AtomicU64>,
@@ -285,7 +298,8 @@ fn run(
     let mut window_gone = false;
     while !stop.load(Ordering::Relaxed) {
         let prefer = *current.lock().unwrap_or_else(|e| e.into_inner());
-        let window = match find_window(&config.games, prefer) {
+        let list = games.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let window = match find_window(&list, prefer) {
             Ok(Some(w)) if w.viewable => w,
             Ok(found) => {
                 if found.is_none() {
@@ -349,6 +363,7 @@ fn run(
             },
             buffer,
             &retention_secs,
+            games,
             on_status.as_ref(),
         );
         // Close the open segment so it can be saved while no window is recorded.
@@ -442,6 +457,7 @@ fn record_window(
     audio: Audio,
     buffer: &ReplayBuffer,
     retention_secs: &AtomicU64,
+    games: &Mutex<Vec<Game>>,
     on_status: &StatusFn,
 ) -> Result<(), String> {
     let (width, height) = window.size;
@@ -543,6 +559,16 @@ fn record_window(
 
         if last_status.elapsed() >= STATUS_INTERVAL {
             last_status = Instant::now();
+            // Removed from the games (or switched off): stop recording it.
+            let listed = games
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .iter()
+                .any(|g| g.name == window.game);
+            if !listed {
+                tracing::info!(game = %window.game, "no longer in the games list: stop recording it");
+                break Ok(());
+            }
             let (buffered, bytes) = buffer.stats();
             on_status(RecorderStatus::Recording {
                 game: window.game.clone(),

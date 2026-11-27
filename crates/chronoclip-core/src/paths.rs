@@ -79,6 +79,22 @@ impl Paths {
     }
 }
 
+/// `$XDG_DATA_HOME`, default `~/.local/share`.
+pub fn data_home(home: &Path) -> PathBuf {
+    xdg_home("XDG_DATA_HOME").unwrap_or_else(|| home.join(".local/share"))
+}
+
+/// `$XDG_CONFIG_HOME`, default `~/.config`.
+pub fn config_home(home: &Path) -> PathBuf {
+    xdg_home("XDG_CONFIG_HOME").unwrap_or_else(|| home.join(".config"))
+}
+
+fn xdg_home(name: &str) -> Option<PathBuf> {
+    std::env::var_os(name)
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+}
+
 /// Data directories in lookup order: `$XDG_DATA_HOME` (default `~/.local/share`), then
 /// `$XDG_DATA_DIRS` (default `/usr/local/share:/usr/share`).
 pub fn data_dirs(home: &Path) -> Vec<PathBuf> {

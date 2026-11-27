@@ -43,3 +43,22 @@ fn steam_names_on_this_computer() {
         "ELDEN RING not found"
     );
 }
+
+/// Installed games on this computer (Steam, Wine prefixes), and how long the scan takes.
+#[test]
+#[ignore = "lists the games installed on this computer"]
+fn installed_games_on_this_computer() {
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    let data_home = chronoclip_core::paths::data_dirs(&home).remove(0);
+    let config_home = home.join(".config");
+    let started = std::time::Instant::now();
+    let launchers = chronoclip_core::launchers::Launchers::load(&home, &data_home, &config_home);
+    let found =
+        chronoclip_core::installed::find_installed(&launchers, &home, &data_home, &config_home);
+    eprintln!("{} games in {:?}", found.len(), started.elapsed());
+    for f in &found {
+        eprintln!("  {} [{}] ({})", f.game.name, f.game.describe(), f.source);
+    }
+}

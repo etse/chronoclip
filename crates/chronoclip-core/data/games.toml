@@ -15,15 +15,16 @@
 # PCGamingWiki). Note the source in a comment.
 
 [[game]]
-# Executables: Faugus/Battle.net installs (Retail, Classic, PTR, Beta), Chronoclip's reference setup.
-name = "World of Warcraft"
-executables = ["Wow.exe", "WowClassic.exe", "WowT.exe", "WowB.exe", "WowClassicT.exe", "WowClassicB.exe"]
-
-[[game]]
 # Steam manifest 1245620; Game/eldenring.exe in the Steam install (start_protected_game.exe only starts it).
 name = "ELDEN RING"
 steam_app_ids = [1245620]
 executables = ["eldenring.exe"]
+
+[[game]]
+# Battle.net install: Heroes of the Storm/Versions/Base<build>/HeroesOfTheStorm_x64.exe
+# ("Heroes of the Storm.exe" in the main folder only starts it).
+name = "Heroes of the Storm"
+executables = ["HeroesOfTheStorm_x64.exe"]
 
 [[game]]
 # Steam manifest 1623730; Pal/Binaries/Win64/Palworld-Win64-Shipping.exe in the Steam install.
@@ -43,3 +44,20 @@ executables = ["PathOfExileSteam.exe"]
 name = "Satisfactory"
 steam_app_ids = [526870]
 executables = ["FactoryGameSteam-Win64-Shipping.exe"]
+
+[[game]]
+# Battle.net install: StarCraft II/Versions/Base<build>/SC2_x64.exe and SC2.exe (32-bit)
+# ("StarCraft II.exe" in the main folder only starts it).
+name = "StarCraft II"
+executables = ["SC2_x64.exe", "SC2.exe"]
+
+[[game]]
+# Battle.net install: Warcraft III/_retail_/x86_64/Warcraft III.exe.
+name = "Warcraft III"
+executables = ["Warcraft III.exe"]
+
+[[game]]
+# Battle.net install: World of Warcraft/_retail_/Wow.exe (also _forever_/Wow.exe), Classic, PTR
+# and Beta clients; Chronoclip's reference setup.
+name = "World of Warcraft"
+executables = ["Wow.exe", "WowClassic.exe", "WowT.exe", "WowB.exe", "WowClassicT.exe", "WowClassicB.exe"]

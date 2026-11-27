@@ -74,6 +74,10 @@ pub struct Settings {
     /// TOML writes it as `[[games]]` tables, which must follow the plain values.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub games: Vec<Game>,
+    /// Installed or built-in games the user switched off ("Don't record"). A game the user
+    /// picks in the window picker is taken off this list again.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub never_record: Vec<Game>,
 }
 
 impl Default for Settings {
@@ -90,6 +94,7 @@ impl Default for Settings {
             buffer_dir: None,
             output_dir: None,
             games: Vec::new(),
+            never_record: Vec::new(),
         }
     }
 }
@@ -196,6 +201,7 @@ impl Settings {
                 *dir = None;
             }
         }
+        self.never_record.retain(Game::is_valid);
         self.games.retain(|game| {
             let valid = game.is_valid();
             if !valid {
@@ -206,10 +212,17 @@ impl Settings {
         self
     }
 
-    /// Add a game unless an existing one (or World of Warcraft) already covers it. Returns the
-    /// name of the game that now records it: the new one, or the existing one.
-    pub fn add_game(&mut self, game: Game) -> String {
-        if let Some(existing) = self.all_games().into_iter().find(|g| g.covers(&game)) {
+    /// Add a game unless an existing one (yours, `installed` or built in) already covers it.
+    /// Returns the name of the game that now records it: the new one, or the existing one.
+    /// Either way it's taken off the "never record" list: the user asked for it.
+    pub fn add_game(&mut self, game: Game, installed: &[Game]) -> String {
+        self.never_record
+            .retain(|n| !n.covers(&game) && !game.covers(n));
+        if let Some(existing) = self
+            .all_games(installed)
+            .into_iter()
+            .find(|g| g.covers(&game))
+        {
             return existing.name;
         }
         let name = game.name.clone();
@@ -217,14 +230,27 @@ impl Settings {
         name
     }
 
-    /// Every game to look for, in priority order: the user's games (their names win where a
-    /// window matches both), then the built-in catalog.
-    pub fn all_games(&self) -> Vec<Game> {
-        self.games
+    /// True if `game` is on the "never record" list.
+    pub fn is_never_recorded(&self, game: &Game) -> bool {
+        self.never_record
             .iter()
-            .cloned()
-            .chain(crate::games::catalog().iter().cloned())
-            .collect()
+            .any(|n| n.name.eq_ignore_ascii_case(&game.name) || n.covers(game) || game.covers(n))
+    }
+
+    /// Every game to look for, in priority order: the user's games (their names win where a
+    /// window matches both), then the `installed` games, then the rest of the built-in
+    /// catalog; without the ones on the "never record" list.
+    pub fn all_games(&self, installed: &[Game]) -> Vec<Game> {
+        let mut games = self.games.clone();
+        for game in installed.iter().chain(crate::games::catalog()) {
+            let known = games
+                .iter()
+                .any(|g| g.name.eq_ignore_ascii_case(&game.name) || g.covers(game));
+            if !known && !self.is_never_recorded(game) {
+                games.push(game.clone());
+            }
+        }
+        games
     }
 
     pub fn buffer_dir(&self, paths: &Paths) -> PathBuf {
@@ -326,9 +352,12 @@ mod tests {
         };
         s.save(&path)?;
         assert_eq!(Settings::load(&path)?, s);
-        let names: Vec<_> = s.all_games().into_iter().map(|g| g.name).collect();
-        assert_eq!(names[..2], ["Elden Ring", "World of Warcraft"]);
-        assert_eq!(names.len(), 1 + crate::games::catalog().len());
+        let names: Vec<_> = s.all_games(&[]).into_iter().map(|g| g.name).collect();
+        // Yours first; it covers the catalog's ELDEN RING (same executable), so that's left out.
+        assert_eq!(names[0], "Elden Ring");
+        assert!(!names.contains(&"ELDEN RING".to_owned()));
+        assert!(names.contains(&"World of Warcraft".to_owned()));
+        assert_eq!(names.len(), crate::games::catalog().len());
 
         let broken = Game {
             name: "Broken".into(),
@@ -345,8 +374,11 @@ mod tests {
 
         let mut s = Settings::default();
         // Built in: not added again, the catalog's name is used.
-        assert_eq!(s.add_game(elden), "ELDEN RING");
-        assert_eq!(s.add_game(Game::world_of_warcraft()), "World of Warcraft");
+        assert_eq!(s.add_game(elden, &[]), "ELDEN RING");
+        assert_eq!(
+            s.add_game(Game::world_of_warcraft(), &[]),
+            "World of Warcraft"
+        );
         assert!(s.games.is_empty());
         let hades = Game {
             name: "Hades".into(),
@@ -354,9 +386,34 @@ mod tests {
             executables: vec!["Hades.exe".into()],
             title_contains: None,
         };
-        assert_eq!(s.add_game(hades.clone()), "Hades");
-        assert_eq!(s.add_game(hades.clone()), "Hades");
+        assert_eq!(s.add_game(hades.clone(), &[]), "Hades");
+        assert_eq!(s.add_game(hades.clone(), &[]), "Hades");
         assert_eq!(s.games, [hades]);
+
+        // Installed and built-in games come after yours; "never record" leaves them out.
+        let factorio = Game {
+            name: "Factorio".into(),
+            executables: Vec::new(),
+            steam_app_ids: vec![427_520],
+            title_contains: None,
+        };
+        let names = |s: &Settings| -> Vec<String> {
+            s.all_games(std::slice::from_ref(&factorio))
+                .into_iter()
+                .map(|g| g.name)
+                .collect()
+        };
+        assert_eq!(names(&s)[..2], ["Hades", "Factorio"]);
+        assert!(names(&s).contains(&"World of Warcraft".to_owned()));
+        s.never_record = vec![factorio.clone(), Game::world_of_warcraft()];
+        assert!(!names(&s).contains(&"Factorio".to_owned()));
+        assert!(!names(&s).contains(&"World of Warcraft".to_owned()));
+        // Picking it again takes it off the list.
+        assert_eq!(
+            s.add_game(factorio.clone(), std::slice::from_ref(&factorio)),
+            "Factorio"
+        );
+        assert_eq!(s.never_record, [Game::world_of_warcraft()]);
         Ok(())
     }
 
@@ -384,6 +441,7 @@ mod tests {
             buffer_dir: Some("/mnt/ssd/buffer".into()),
             output_dir: None,
             games: vec![Game::by_title("Factorio")],
+            never_record: vec![Game::world_of_warcraft()],
         };
         s.save(&path)?;
         assert_eq!(Settings::load(&path)?, s);

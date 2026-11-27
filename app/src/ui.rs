@@ -11,8 +11,9 @@ use chronoclip_core::disk::{
     estimate_buffer_bytes, format_gb, nominal_bitrate_mbps, tmpfs_warning,
 };
 use chronoclip_core::games::{catalog, find_game};
+use chronoclip_core::installed::InstalledGame;
 use chronoclip_core::launchers::Launchers;
-use chronoclip_core::paths::data_dirs;
+use chronoclip_core::paths::{config_home, data_home};
 use chronoclip_core::settings::{
     AudioMode, DEFAULT_FPS, EncoderPreference, SUPPORTED_FPS, Settings,
 };
@@ -68,6 +69,7 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
     let clip_controller = Arc::clone(&controller);
     let trial_controller = Arc::clone(&controller);
     let picker_controller = Arc::clone(&controller);
+    let games_controller = Arc::clone(&controller);
 
     window.set_version(env!("CARGO_PKG_VERSION").into());
     window.set_status_text("Starting…".into());
@@ -81,6 +83,7 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
         AudioMode::ALL.iter().map(|a| audio_label(*a).to_owned()),
     ));
     show_settings(window, settings, &paths);
+    show_games(window, settings, &controller.installed());
 
     window.on_estimate_disk(|minutes, fps| {
         let fps = fps.parse().unwrap_or(DEFAULT_FPS);
@@ -124,6 +127,7 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
             tracing::info!(?settings, "settings saved");
             *current.borrow_mut() = settings.clone();
             controller.apply_settings(&settings);
+            show_games(&window, &settings, &controller.installed());
         }
     };
     let commit = Rc::new(commit);
@@ -135,8 +139,7 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
         move |done: &str| {
             let Some(window) = weak.upgrade() else { return };
             // Games aren't part of the form; keep them (also on "Reset to defaults").
-            let games = current.borrow().games.clone();
-            match read_settings(&window, &paths, games) {
+            match read_settings(&window, &paths, &current.borrow()) {
                 Ok(settings) => commit(settings, done),
                 Err(e) => set_message(&window, &e, true),
             }
@@ -165,7 +168,8 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
                 .into_iter()
                 .filter(|w| w.pid != Some(own_pid))
                 .collect();
-            let games = current.borrow().all_games();
+            let installed = installed_games(&picker_controller);
+            let games = current.borrow().all_games(&installed);
             let recording = picker_controller.current_window();
             let launchers = load_launchers(&paths);
             let rows: Vec<WindowRow> = windows
@@ -215,11 +219,14 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
                 .and_then(|i| picker_windows.borrow().get(i).cloned());
             let Some(picked) = picked else { return };
             let mut settings = current.borrow().clone();
+            let installed = installed_games(&trial_controller);
             // A window one of your games already matches is just recorded, not added again.
-            let known = find_game(&settings.all_games(), &picked.facts).map(|g| g.name.clone());
+            // (One you switched off isn't in that list: picking it switches it on again.)
+            let known =
+                find_game(&settings.all_games(&installed), &picked.facts).map(|g| g.name.clone());
             let name = known.unwrap_or_else(|| {
                 let launcher_name = load_launchers(&paths).name_for(&picked.facts);
-                settings.add_game(Game::from_window(&picked.facts, launcher_name))
+                settings.add_game(Game::from_window(&picked.facts, launcher_name), &installed)
             });
             tracing::info!(game = %name, title = %picked.facts.title, "window picked");
             window.set_picker_open(false);
@@ -254,21 +261,55 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
             );
         }
     });
-    window.on_remove_game({
+    // Buttons on the Games tab: section 0 yours ("Remove"), 1 installed and 3 built in
+    // ("Don't record"), 2 not recorded ("Record again").
+    window.on_game_action({
         let current = Rc::clone(&current);
         let commit = Rc::clone(&commit);
-        move |index| {
-            // Rows of "Your games" are the settings' games, in order.
-            let Ok(i) = usize::try_from(index) else {
+        let controller = Arc::clone(&games_controller);
+        move |section, index| {
+            let Ok(index) = usize::try_from(index) else {
                 return;
             };
             let mut settings = current.borrow().clone();
-            if i >= settings.games.len() {
+            let sections = game_sections(&settings, &controller.installed());
+            let Some(row) = usize::try_from(section)
+                .ok()
+                .and_then(|s| sections.get(s))
+                .and_then(|rows| rows.get(index))
+            else {
                 return;
+            };
+            let game = row.game.clone();
+            let done = match section {
+                0 => {
+                    settings.games.retain(|g| *g != game);
+                    format!("Removed {}.", game.name)
+                }
+                2 => {
+                    settings.never_record.retain(|g| *g != game);
+                    format!("{} will be recorded again.", game.name)
+                }
+                _ => {
+                    settings.never_record.push(game.clone());
+                    format!("{} won't be recorded.", game.name)
+                }
+            };
+            tracing::info!(game = %game.name, section, "games list changed");
+            commit(settings, &done);
+        }
+    });
+    // Opening the Games tab looks for newly installed (or uninstalled) games.
+    window.on_tab_opened({
+        let weak = window.as_weak();
+        let current = Rc::clone(&current);
+        let controller = Arc::clone(&games_controller);
+        move |tab| {
+            let Some(window) = weak.upgrade() else { return };
+            if tab == GAMES_TAB {
+                let installed = controller.refresh_installed();
+                show_games(&window, &current.borrow(), &installed);
             }
-            let game = settings.games.remove(i);
-            tracing::info!(game = %game.name, "game removed");
-            commit(settings, &format!("Removed {}.", game.name));
         }
     });
 
@@ -502,15 +543,11 @@ fn start_resize(window: &MainWindow, edge: ResizeEdge) {
 
 /// The installed games the launchers know (read when the picker needs them).
 fn load_launchers(paths: &Paths) -> Launchers {
-    let data_home = data_dirs(&paths.home_dir)
-        .into_iter()
-        .next()
-        .unwrap_or_else(|| paths.home_dir.join(".local/share"));
-    let config_home = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .unwrap_or_else(|| paths.home_dir.join(".config"));
-    Launchers::load(&paths.home_dir, &data_home, &config_home)
+    Launchers::load(
+        &paths.home_dir,
+        &data_home(&paths.home_dir),
+        &config_home(&paths.home_dir),
+    )
 }
 
 pub fn set_message(window: &MainWindow, text: &str, is_error: bool) {
@@ -529,22 +566,82 @@ fn show_settings(window: &MainWindow, settings: &Settings, paths: &Paths) {
     window.set_custom_title_bar(settings.custom_title_bar);
     window.set_buffer_dir(paths.contract_home(&settings.buffer_dir(paths)).into());
     window.set_output_dir(paths.contract_home(&settings.output_dir(paths)).into());
-    let rows = |games: &[Game], builtin: bool| -> ModelRc<GameRow> {
-        let rows: Vec<GameRow> = games
+}
+
+/// Index of the Games tab in the title bar (Home · Games · Settings · About).
+const GAMES_TAB: i32 = 1;
+
+/// One row on the Games tab.
+struct GameEntry {
+    game: Game,
+    detail: String,
+}
+
+/// The Games tab's sections: yours, installed, not recorded, other built-in games.
+fn game_sections(settings: &Settings, installed: &[InstalledGame]) -> [Vec<GameEntry>; 4] {
+    let entry = |game: &Game, extra: Option<&str>| GameEntry {
+        game: game.clone(),
+        detail: match extra {
+            Some(extra) => format!("{} · {extra}", game.describe()),
+            None => game.describe(),
+        },
+    };
+    let yours = |game: &Game| {
+        settings
+            .games
             .iter()
-            .map(|game| GameRow {
-                name: game.name.clone().into(),
-                detail: game.describe().into(),
-                builtin,
+            .any(|g| g.name.eq_ignore_ascii_case(&game.name) || g.covers(game))
+    };
+    let mine = settings.games.iter().map(|g| entry(g, None)).collect();
+    let installed_rows: Vec<GameEntry> = installed
+        .iter()
+        .filter(|i| !yours(&i.game) && !settings.is_never_recorded(&i.game))
+        .map(|i| entry(&i.game, Some(&i.source)))
+        .collect();
+    let ignored = settings
+        .never_record
+        .iter()
+        .map(|g| entry(g, None))
+        .collect();
+    let builtin = catalog()
+        .iter()
+        .filter(|g| {
+            !yours(g)
+                && !settings.is_never_recorded(g)
+                && !installed.iter().any(|i| i.game.name == g.name)
+        })
+        .map(|g| entry(g, None))
+        .collect();
+    [mine, installed_rows, ignored, builtin]
+}
+
+/// Fill the Games tab.
+fn show_games(window: &MainWindow, settings: &Settings, installed: &[InstalledGame]) {
+    let [mine, installed, ignored, builtin] = game_sections(settings, installed);
+    let rows = |entries: Vec<GameEntry>, action: &str, known: bool| -> ModelRc<GameRow> {
+        let rows: Vec<GameRow> = entries
+            .into_iter()
+            .map(|e| GameRow {
+                name: e.game.name.into(),
+                detail: e.detail.into(),
+                action: action.into(),
+                known,
             })
             .collect();
         ModelRc::new(VecModel::from(rows))
     };
-    window.set_games(rows(&settings.games, false));
-    window.set_builtin_games(rows(catalog(), true));
+    window.set_games(rows(mine, "Remove", false));
+    window.set_installed_games(rows(installed, "Don't record", true));
+    window.set_ignored_games(rows(ignored, "Record again", false));
+    window.set_builtin_games(rows(builtin, "Don't record", true));
 }
 
-fn read_settings(window: &MainWindow, paths: &Paths, games: Vec<Game>) -> Result<Settings, String> {
+/// The installed games' entries (from the controller's last scan).
+fn installed_games(controller: &Controller) -> Vec<Game> {
+    controller.installed().into_iter().map(|i| i.game).collect()
+}
+
+fn read_settings(window: &MainWindow, paths: &Paths, base: &Settings) -> Result<Settings, String> {
     let hotkey = window
         .get_hotkey()
         .trim()
@@ -570,7 +667,8 @@ fn read_settings(window: &MainWindow, paths: &Paths, games: Vec<Game>) -> Result
         custom_title_bar: window.get_custom_title_bar(),
         buffer_dir: dir_setting(&window.get_buffer_dir(), &paths.default_buffer_dir, paths),
         output_dir: dir_setting(&window.get_output_dir(), &paths.default_output_dir, paths),
-        games,
+        games: base.games.clone(),
+        never_record: base.never_record.clone(),
     };
     settings
         .validate()

@@ -8,7 +8,10 @@ use std::sync::{Arc, Mutex, OnceLock, mpsc};
 
 use chronoclip_core::Game;
 use chronoclip_core::disk::{format_duration, format_size};
+use chronoclip_core::installed::{InstalledGame, find_installed};
 use chronoclip_core::ipc::{Request, Response};
+use chronoclip_core::launchers::Launchers;
+use chronoclip_core::paths::{config_home, data_home};
 use chronoclip_core::settings::Settings;
 use chronoclip_core::{Hotkey, Paths};
 
@@ -124,6 +127,15 @@ pub struct Controller {
     /// The window being recorded (or picked to be): the recorder stays with it until it
     /// closes, also across restarts for changed settings. See [`Recorder::start`].
     current_window: Arc<Mutex<Option<u64>>>,
+    /// The games the recorder looks for (yours, installed, built in), shared with it so the
+    /// list can change without a restart.
+    games: Arc<Mutex<Vec<Game>>>,
+    /// Games installed on this computer; `None` until the first scan.
+    installed: Mutex<Option<Vec<InstalledGame>>>,
+    /// The settings last applied (for rebuilding `games` after a new scan).
+    settings: Mutex<Option<Settings>>,
+    /// For the waiting text: the names of your and the installed games.
+    waiting_for: Arc<Mutex<String>>,
 }
 
 impl Controller {
@@ -149,6 +161,10 @@ impl Controller {
             save_sound: Arc::new(AtomicBool::new(true)),
             trial: Arc::new(Mutex::new(None)),
             current_window: Arc::new(Mutex::new(None)),
+            games: Arc::new(Mutex::new(Vec::new())),
+            installed: Mutex::new(None),
+            settings: Mutex::new(None),
+            waiting_for: Arc::new(Mutex::new(String::new())),
         }
     }
 
@@ -365,6 +381,9 @@ impl Controller {
         *self.output_dir.lock().unwrap_or_else(|e| e.into_inner()) =
             settings.output_dir(&self.paths);
 
+        *self.settings.lock().unwrap_or_else(|e| e.into_inner()) = Some(settings.clone());
+        self.update_games();
+
         let config = RecorderConfig {
             buffer_dir: settings.buffer_dir(&self.paths),
             buffer_minutes: settings.buffer_minutes,
@@ -372,10 +391,6 @@ impl Controller {
             encoder: settings.encoder,
             audio: settings.audio,
             microphone: settings.microphone,
-            games: match std::env::var(WINDOW_ENV) {
-                Ok(title) if !title.is_empty() => vec![Game::by_title(&title)],
-                _ => settings.all_games(),
-            },
         };
         let mut slot = self.recorder.lock().unwrap_or_else(|e| e.into_inner());
         if let (Some(recorder), Some(old)) = (&slot.recorder, &slot.config)
@@ -394,44 +409,118 @@ impl Controller {
         self.start_recorder(&mut slot, config);
     }
 
+    /// Look for installed games again (Steam, Wine prefixes) and update the games list.
+    /// Returns what was found.
+    pub fn refresh_installed(&self) -> Vec<InstalledGame> {
+        let found = self.scan_installed();
+        *self.installed.lock().unwrap_or_else(|e| e.into_inner()) = Some(found.clone());
+        self.update_games();
+        found
+    }
+
+    /// The installed games from the last scan (scans if there was none yet).
+    pub fn installed(&self) -> Vec<InstalledGame> {
+        let mut installed = self.installed.lock().unwrap_or_else(|e| e.into_inner());
+        installed
+            .get_or_insert_with(|| self.scan_installed())
+            .clone()
+    }
+
+    fn scan_installed(&self) -> Vec<InstalledGame> {
+        let home = &self.paths.home_dir;
+        let (data, config) = (data_home(home), config_home(home));
+        let started = std::time::Instant::now();
+        let launchers = Launchers::load(home, &data, &config);
+        let found = find_installed(&launchers, home, &data, &config);
+        tracing::info!(
+            games = found.len(),
+            ms = started.elapsed().as_millis(),
+            "looked for installed games"
+        );
+        found
+    }
+
+    /// Rebuild the shared games list from the settings and the installed games.
+    fn update_games(&self) {
+        let Some(settings) = self
+            .settings
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+        else {
+            return;
+        };
+        let installed: Vec<Game> = self.installed().into_iter().map(|i| i.game).collect();
+        let (games, names) = match std::env::var(WINDOW_ENV) {
+            Ok(title) if !title.is_empty() => {
+                let game = Game::by_title(&title);
+                (vec![game.clone()], vec![game])
+            }
+            _ => {
+                let games = settings.all_games(&installed);
+                // The waiting text names your and the installed games, not the whole catalog.
+                let names = games
+                    .iter()
+                    .filter(|g| settings.games.contains(g) || installed.contains(g))
+                    .cloned()
+                    .collect();
+                (games, names)
+            }
+        };
+        *self.waiting_for.lock().unwrap_or_else(|e| e.into_inner()) = waiting_for(&names);
+        *self.games.lock().unwrap_or_else(|e| e.into_inner()) = games;
+    }
+
     fn start_recorder(&self, slot: &mut RecorderSlot, config: RecorderConfig) {
         let window = self.window.clone();
         let tray = self.tray.get().cloned();
-        let waiting_for = waiting_for(&config.games);
+        let waiting_for = Arc::clone(&self.waiting_for);
         let last_save = Arc::clone(&self.last_save);
         let trial = Arc::clone(&self.trial);
         let current = Arc::clone(&self.current_window);
-        slot.recorder = Some(Recorder::start(config.clone(), current, move |status| {
-            check_trial(&trial, &status, &window);
-            let (text, recording) = status_text(&status, &waiting_for);
-            let state = match status {
-                RecorderStatus::Recording { .. } => TrayState::Recording,
-                RecorderStatus::Error(_) | RecorderStatus::Failed { .. } => TrayState::Error,
-                RecorderStatus::WaitingForWindow | RecorderStatus::Stopped => TrayState::Waiting,
-            };
-            let mut tray_text = format!("Chronoclip: {text}");
-            if let Some(line) = &*last_save.lock().unwrap_or_else(|e| e.into_inner()) {
-                tray_text.push('\n');
-                tray_text.push_str(line);
-            }
-            let view = status_view(&status, &waiting_for);
-            let _ = window.upgrade_in_event_loop(move |w| {
-                w.set_status_text(text.into());
-                w.set_recording(recording);
-                w.set_rec_state(view.state);
-                w.set_rec_title(view.title.into());
-                w.set_rec_detail(view.detail.into());
-                w.set_buffer_fraction(view.fraction);
-                w.set_buffer_label(view.buffer_label.into());
-                w.set_buffer_size(view.buffer_size.into());
-            });
-            if let Some(tray) = &tray {
-                let _ = tray.upgrade_in_event_loop(move |t| {
-                    t.set_status(tray_text.into());
-                    t.set_state(state);
+        let games = Arc::clone(&self.games);
+        slot.recorder = Some(Recorder::start(
+            config.clone(),
+            games,
+            current,
+            move |status| {
+                check_trial(&trial, &status, &window);
+                let waiting_for = waiting_for
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone();
+                let (text, recording) = status_text(&status, &waiting_for);
+                let state = match status {
+                    RecorderStatus::Recording { .. } => TrayState::Recording,
+                    RecorderStatus::Error(_) | RecorderStatus::Failed { .. } => TrayState::Error,
+                    RecorderStatus::WaitingForWindow | RecorderStatus::Stopped => {
+                        TrayState::Waiting
+                    }
+                };
+                let mut tray_text = format!("Chronoclip: {text}");
+                if let Some(line) = &*last_save.lock().unwrap_or_else(|e| e.into_inner()) {
+                    tray_text.push('\n');
+                    tray_text.push_str(line);
+                }
+                let view = status_view(&status, &waiting_for);
+                let _ = window.upgrade_in_event_loop(move |w| {
+                    w.set_status_text(text.into());
+                    w.set_recording(recording);
+                    w.set_rec_state(view.state);
+                    w.set_rec_title(view.title.into());
+                    w.set_rec_detail(view.detail.into());
+                    w.set_buffer_fraction(view.fraction);
+                    w.set_buffer_label(view.buffer_label.into());
+                    w.set_buffer_size(view.buffer_size.into());
                 });
-            }
-        }));
+                if let Some(tray) = &tray {
+                    let _ = tray.upgrade_in_event_loop(move |t| {
+                        t.set_status(tray_text.into());
+                        t.set_state(state);
+                    });
+                }
+            },
+        ));
         slot.config = Some(config);
     }
 
@@ -484,7 +573,7 @@ fn check_trial(
 fn waiting_for(games: &[Game]) -> String {
     let names: Vec<&str> = games.iter().map(|g| g.name.as_str()).collect();
     match names.as_slice() {
-        [] => String::new(),
+        [] => "your games".to_owned(),
         [one] => (*one).to_owned(),
         [first @ .., last] if names.len() <= 3 => format!("{} and {last}", first.join(", ")),
         _ => format!("{} and {} more", names[..3].join(", "), names.len() - 3),

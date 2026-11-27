@@ -152,6 +152,23 @@ impl Launchers {
         }
     }
 
+    /// Installed Steam games as `(app id, name)`, sorted by name (tools such as Proton
+    /// excluded).
+    pub fn steam_games(&self) -> Vec<(u32, &str)> {
+        let mut games: Vec<(u32, &str)> = self
+            .steam
+            .iter()
+            .map(|(&id, name)| (id, name.as_str()))
+            .collect();
+        games.sort_by_key(|(_, name)| name.to_lowercase());
+        games
+    }
+
+    /// Wine prefixes of the Faugus Launcher entries.
+    pub fn faugus_prefixes(&self) -> Vec<PathBuf> {
+        self.faugus.iter().map(|g| g.prefix.clone()).collect()
+    }
+
     /// Name of installed Steam game `id` (tools such as Proton excluded).
     pub fn steam_name(&self, id: u32) -> Option<&str> {
         self.steam.get(&id).map(String::as_str)
@@ -203,7 +220,7 @@ pub fn steam_app_id(window: &WindowFacts) -> Option<u32> {
 
 /// `/home/me/Faugus/battlenet/pfx/` → `/home/me/Faugus/battlenet` (Proton keeps the Wine
 /// prefix in `pfx/` inside the folder launchers call the prefix).
-fn wine_prefix_root(prefix: &str) -> PathBuf {
+pub(crate) fn wine_prefix_root(prefix: &str) -> PathBuf {
     let path = Path::new(prefix.trim_end_matches('/'));
     if path.file_name().is_some_and(|f| f == "pfx") {
         path.parent().unwrap_or(path).to_owned()
@@ -214,7 +231,7 @@ fn wine_prefix_root(prefix: &str) -> PathBuf {
 
 /// Steam library folders: each Steam install plus the libraries its `libraryfolders.vdf`
 /// lists (other drives). Native, `~/.steam` symlink and Flatpak installs.
-fn steam_libraries(home: &Path, data_home: &Path) -> Vec<PathBuf> {
+pub(crate) fn steam_libraries(home: &Path, data_home: &Path) -> Vec<PathBuf> {
     let roots = [
         data_home.join("Steam"),
         home.join(".steam/steam"),
