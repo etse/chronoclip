@@ -12,8 +12,43 @@ Status: ✅ done · 🚧 in progress · ⬜ not started
 | M5 | Polish: save notification and chime, tray state, start with desktop | ✅ |
 | M6 | Packaging: .deb (Ubuntu/Mint) and AppImage on GitHub Releases | ✅ |
 | M7 | Modern dark UI: Battle.net-style tabs, Discord-like look, custom title bar | ✅ |
-| M8 | Other games (long term): record any game, not just WoW: window picker, game detection, per-game clips | ⬜ |
+| M8 | Other games: record any game, not just WoW: game detection, window picker, per-game clips | 🚧 |
 | M9 | Wayland + AMD/Intel: portal/PipeWire capture, GlobalShortcuts portal, VAAPI | ⬜ |
+
+## M8: Other games
+
+Goal: Chronoclip records whatever game you play, not just WoW: it finds the game by itself (asking once when unsure), names it properly, and saves its clips in a folder per game. WoW behaves exactly as before.
+
+Decisions (maintainer, 2026-11-27):
+- **How automatic:** a "looks like a game" score, plus a "Record this game?" question for unknown games; the answer is remembered.
+- **Two games open:** the first one found is recorded until it closes.
+- **Clips:** a folder per game, e.g. `Elden Ring/Elden Ring_2026-11-27_21-04-33.mp4`.
+- **Game changes:** the buffer is cleared, so a clip never mixes two games.
+
+Test games: WoW (Faugus/Battle.net), Elden Ring, Satisfactory, Palworld, Path of Exile 2 (Steam/Proton).
+
+Findings while planning (2026-11-27, on the maintainer's desktop):
+- The **Battle.net launcher** has the same Proton signals as a game: WM_CLASS `steam_app_faugus…`, and `SteamAppId`/`GAMEID`/`WINEPREFIX` in its environment. Launchers must be skipped explicitly.
+- `_NET_WM_BYPASS_COMPOSITOR`: Chrome, Slack, Discord and 1Password set `2` ("please compose me"). SDL games set `1`.
+- GameMode runs but only knows games started with `gamemoderun`. NVIDIA's GPU process list marks nothing as special (Xorg, Cinnamon and Chrome all use the GPU), and it's NVIDIA-only.
+- Steam `appmanifest_*.acf` files also list tools (Proton, Steam Linux Runtime, Steamworks Redistributables); filter them.
+
+Detection only reads window properties and `/proc/<pid>/{comm,cmdline,environ}` (kernel metadata). Never `/proc/<pid>/maps` or `mem` (hard rule 1).
+
+- [ ] Core: a `Game` model (name, how it's matched: executable, Steam app id, window title) and a games list in the settings, with WoW built in; replaces the WoW-only `WindowMatcher` (tests for matching and settings validation)
+- [ ] Window picker: "Choose a window…" on Home lists open windows (title, executable); picking one adds it to your games and records it
+- [ ] Game names from launchers: Steam (`steam_app_<id>` / `SteamAppId` → `appmanifest`, tools filtered out), Lutris (`pga.db`), Faugus, Heroic; the executable name as fallback
+- [ ] Game score: signals for (Wine/Proton/Steam launched, bypass-compositor `1`, fullscreen or monitor-sized, GameMode) and against (known launchers and helpers, browsers, Electron apps); unit tests on recorded window lists, including the Battle.net launcher above
+- [ ] "Record this game?" notification for a likely but unknown game (Always / Not this one), remembered by executable
+- [ ] Per-game clips: folder and file name after the game (safe file names); status texts, tray, "nothing recorded" message name the game
+- [ ] Switching games: when the recorded game closes, look again; a different game clears the buffer first
+- [ ] Settings: a Games card (detected/added games, remove, never record)
+- [ ] Texts: "for World of Warcraft" → "for your games" in README, About, desktop file, metainfo, CLI help, autostart file
+- [ ] Docs: README, architecture.md (detection), AGENTS.md (project description), CHANGELOG
+- [ ] Verified: fmt, clippy, tests; test instance with test windows (known game, unknown game → question, launcher ignored, switch clears buffer)
+- [ ] Verified in-game: WoW as before; Elden Ring, Satisfactory, Palworld and Path of Exile 2 detected with the right names, clips in their own folders, launchers (Battle.net, Steam) never recorded
+
+Out of scope: recording several games at once, per-game settings (fps, sound), Wayland (M9), an online game database (no network calls, hard rule 8).
 
 ## M7: Modern dark UI
 
