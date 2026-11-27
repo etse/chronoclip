@@ -8,10 +8,10 @@ import { GameRow, GamesPage } from "games.slint";
 import { WindowPicker, WindowRow } from "picker.slint";
 import { AboutPage } from "about.slint";
 import { TitleBar } from "titlebar.slint";
-import { HomePage, RecState } from "home.slint";
+import { ClipRow, HomePage, RecState } from "home.slint";
 
 export { Tray, TrayState } from "tray.slint";
-export { RecState } from "home.slint";
+export { ClipRow, RecState } from "home.slint";
 export { GameRow } from "games.slint";
 export { WindowRow } from "picker.slint";
 
@@ -41,11 +41,10 @@ export component MainWindow inherits Window {
     in property <float> buffer-fraction;
     in property <string> buffer-label;
     in property <string> buffer-size;
-    in property <bool> has-last-clip;
-    in property <string> last-clip-name;
-    in property <string> last-clip-detail;
-    callback play-last-clip();
-    callback show-last-clip();
+    // Clips saved this session, newest first (at most 10).
+    in property <[ClipRow]> clips;
+    callback play-clip(int);
+    callback show-clip(int);
     // Games (Settings) and the window picker.
     in property <[GameRow]> games;
     in property <[GameRow]> installed-games;
@@ -153,9 +152,7 @@ export component MainWindow inherits Window {
             save-text: root.save-text;
             save-is-error: root.save-is-error;
             notice: root.message-is-error ? root.message : "";
-            has-last-clip: root.has-last-clip;
-            last-clip-name: root.last-clip-name;
-            last-clip-detail: root.last-clip-detail;
+            clips: root.clips;
             save-replay => {
                 root.save-replay();
             }
@@ -170,11 +167,11 @@ export component MainWindow inherits Window {
             dismiss-suggestion => {
                 root.dismiss-suggestion();
             }
-            play-last-clip => {
-                root.play-last-clip();
+            play-clip(index) => {
+                root.play-clip(index);
             }
-            show-last-clip => {
-                root.show-last-clip();
+            show-clip(index) => {
+                root.show-clip(index);
             }
         }
 

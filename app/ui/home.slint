@@ -1,7 +1,101 @@
-// Home page: what Chronoclip is doing right now, the big Save button and the last clip.
+// Home page: what Chronoclip is doing right now, the big Save button and this session's clips.
 
+import { ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Button, ButtonKind, Card, Hint, Icon, Keycap, ProgressBar } from "components.slint";
+
+/// One clip saved this session.
+export struct ClipRow {
+    // File name, e.g. "ELDEN RING_2026-11-27_21-04-33.mp4".
+    name: string,
+    // "21:04 · 0:10 · 26 MB": when it was saved, length, size.
+    detail: string,
+}
+
+/// Height of one clip row (fixed, so the card can size itself to its rows).
+global ClipList {
+    out property <length> row-height: 60px;
+    out property <length> header-height: 40px;
+}
+
+component ClipItem {
+    in property <ClipRow> item;
+    in property <bool> newest;
+    callback play();
+    callback show();
+
+    height: ClipList.row-height;
+
+    HorizontalLayout {
+        padding-left: Theme.space-l;
+        padding-right: Theme.space-m;
+        spacing: Theme.space-m;
+
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 36px;
+                height: 36px;
+                border-radius: Theme.radius;
+                background: root.newest ? Theme.accent-soft : Theme.surface-raised;
+                Icon {
+                    source: @image-url("icons/lucide/film.svg");
+                    color: root.newest ? Theme.accent : Theme.text-muted;
+                    size: 18px;
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 1px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.item.name;
+                color: Theme.text;
+                font-size: Theme.font-body;
+                font-weight: 600;
+                overflow: elide;
+            }
+
+            Text {
+                text: root.item.detail;
+                color: Theme.text-muted;
+                font-size: Theme.font-small;
+                overflow: elide;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            Button {
+                text: "Play";
+                has-icon: true;
+                icon: @image-url("icons/lucide/play.svg");
+                height-hint: 32px;
+                font-size: Theme.font-small;
+                clicked => {
+                    root.play();
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            Button {
+                text: "Show in folder";
+                kind: ButtonKind.ghost;
+                has-icon: true;
+                icon: @image-url("icons/lucide/folder-open.svg");
+                height-hint: 32px;
+                font-size: Theme.font-small;
+                clicked => {
+                    root.show();
+                }
+            }
+        }
+    }
+}
 
 export enum RecState { waiting, recording, error }
 
@@ -150,10 +244,8 @@ export component HomePage {
     in property <bool> save-is-error;
     // An error to show on Home, e.g. a picked window that can't be recorded.
     in property <string> notice;
-    // Last saved clip.
-    in property <bool> has-last-clip;
-    in property <string> last-clip-name;
-    in property <string> last-clip-detail;
+    // Clips saved this session, newest first (at most 10).
+    in property <[ClipRow]> clips;
     callback save-replay();
     callback choose-window();
     // "Record this game?" ("" = nothing to ask).
@@ -161,13 +253,19 @@ export component HomePage {
     in property <string> suggestion-detail;
     callback accept-suggestion();
     callback dismiss-suggestion();
-    callback play-last-clip();
-    callback show-last-clip();
+    callback play-clip(int);
+    callback show-clip(int);
 
+    // Everything above the clips keeps its size; the clips card takes what's left (no more
+    // than its rows need) and only its list scrolls.
     VerticalLayout {
         padding: Theme.space-xl;
         spacing: Theme.space-l;
-        alignment: start;
+
+        // Status, questions and Save replay: always their natural height.
+        VerticalLayout {
+        vertical-stretch: 0;
+        spacing: Theme.space-l;
 
         Card {
             VerticalLayout {
@@ -333,7 +431,9 @@ export component HomePage {
             wrap: word-wrap;
         }
 
-        Card {
+        }
+
+        if root.clips.length == 0: Card {
             HorizontalLayout {
                 padding: Theme.space-l;
                 spacing: Theme.space-l;
@@ -355,7 +455,7 @@ export component HomePage {
                     spacing: 2px;
                     horizontal-stretch: 1;
                     Text {
-                        text: root.has-last-clip ? "LAST CLIP" : "NO CLIPS YET";
+                        text: "NO CLIPS YET";
                         color: Theme.text-faint;
                         font-size: Theme.font-small;
                         font-weight: 700;
@@ -363,44 +463,72 @@ export component HomePage {
                     }
 
                     Text {
-                        text: root.has-last-clip ? root.last-clip-name : "Press " + (root.hotkey == "" ? "Save replay" : root.hotkey) + " in game to save the last minutes.";
+                        text: "Press " + (root.hotkey == "" ? "Save replay" : root.hotkey) + " in game to save the last minutes.";
                         color: Theme.text;
                         font-size: Theme.font-body;
                         font-weight: 600;
-                        overflow: elide;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+
+        if root.clips.length > 0: Card {
+            // As tall as the rows need, but not taller than the space left (then the list
+            // scrolls); at least one row stays visible.
+            property <length> rows: root.clips.length * (ClipList.row-height + 1px);
+            min-height: ClipList.header-height + ClipList.row-height + Theme.space-s;
+            max-height: ClipList.header-height + self.rows + Theme.space-s;
+            // Takes the free height before the filler below does.
+            vertical-stretch: 100;
+
+            VerticalLayout {
+                padding-bottom: Theme.space-s;
+                HorizontalLayout {
+                    height: ClipList.header-height;
+                    padding-left: Theme.space-l;
+                    padding-right: Theme.space-l;
+                    Text {
+                        text: "CLIPS THIS SESSION";
+                        color: Theme.text-faint;
+                        font-size: Theme.font-small;
+                        font-weight: 700;
+                        letter-spacing: 1px;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
                     }
 
-                    if root.has-last-clip: Text {
-                        text: root.last-clip-detail;
-                        color: Theme.text-muted;
+                    Text {
+                        text: root.clips.length == 1 ? "1 clip" : root.clips.length + " clips";
+                        color: Theme.text-faint;
                         font-size: Theme.font-small;
+                        vertical-alignment: center;
                     }
                 }
 
-                if root.has-last-clip: HorizontalLayout {
-                    spacing: Theme.space-s;
-                    alignment: end;
+                ScrollView {
+                    vertical-stretch: 1;
+                    // The rows have a fixed height: tell the scroll area how tall they are (it
+                    // doesn't work it out from the repeated rows).
+                    content-height: root.clips.length * (ClipList.row-height + 1px);
+                    content-width: self.visible-width;
                     VerticalLayout {
-                        alignment: center;
-                        Button {
-                            text: "Play";
-                            has-icon: true;
-                            icon: @image-url("icons/lucide/play.svg");
-                            clicked => {
-                                root.play-last-clip();
+                        alignment: start;
+                        for clip[index] in root.clips: VerticalLayout {
+                            Rectangle {
+                                height: 1px;
+                                background: Theme.border;
+                                opacity: 0.6;
                             }
-                        }
-                    }
-
-                    VerticalLayout {
-                        alignment: center;
-                        Button {
-                            text: "Show in folder";
-                            kind: ButtonKind.ghost;
-                            has-icon: true;
-                            icon: @image-url("icons/lucide/folder-open.svg");
-                            clicked => {
-                                root.show-last-clip();
+                            ClipItem {
+                                item: clip;
+                                newest: index == 0;
+                                play => {
+                                    root.play-clip(index);
+                                }
+                                show => {
+                                    root.show-clip(index);
+                                }
                             }
                         }
                     }
@@ -408,5 +536,9 @@ export component HomePage {
             }
         }
 
+        // Fills the rest when the clips need less room, so nothing above moves.
+        Rectangle {
+            vertical-stretch: 1;
+        }
     }
 }

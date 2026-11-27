@@ -21,7 +21,7 @@ use crate::hotkey::GlobalHotkey;
 use crate::notify::Alerts;
 use crate::recorder::{Recorder, RecorderConfig, RecorderStatus, Shared};
 use crate::save::{self, SavedClip};
-use crate::ui::{MainWindow, RecState, Tray, TrayState};
+use crate::ui::{ClipRow, MainWindow, RecState, Tray, TrayState};
 
 /// Set to a window title (substring) to record only that window instead of the games. For
 /// testing.
@@ -43,8 +43,8 @@ struct HotkeySlot {
 #[derive(Clone)]
 struct SaveFeedback {
     window: slint::Weak<MainWindow>,
-    /// The clip of the last successful save (for Play / Show in folder on the Home page).
-    last_clip: Arc<Mutex<Option<PathBuf>>>,
+    /// The clips saved this session, newest first (Play / Show in folder on the Home page).
+    clips: Arc<Mutex<Vec<PathBuf>>>,
     /// Line for the tray tooltip (shown with the next status update) about the last save.
     last_save: Arc<Mutex<Option<String>>>,
     alerts: Arc<Alerts>,
@@ -79,17 +79,26 @@ impl SaveFeedback {
         match result {
             Ok(clip) => {
                 self.alerts.clip_saved(clip, sound);
-                *self.last_clip.lock().unwrap_or_else(|e| e.into_inner()) = Some(clip.path.clone());
-                let name = clip.file_name();
-                let detail = format!(
-                    "{} · {}",
-                    format_duration(clip.duration),
-                    format_size(clip.bytes)
+                push_recent(
+                    &mut self.clips.lock().unwrap_or_else(|e| e.into_inner()),
+                    clip.path.clone(),
                 );
+                let row = ClipRow {
+                    name: clip.file_name().into(),
+                    detail: format!(
+                        "{} · {} · {}",
+                        chrono::Local::now().format("%H:%M"),
+                        format_duration(clip.duration),
+                        format_size(clip.bytes)
+                    )
+                    .into(),
+                };
                 let _ = self.window.upgrade_in_event_loop(move |w| {
-                    w.set_has_last_clip(true);
-                    w.set_last_clip_name(name.into());
-                    w.set_last_clip_detail(detail.into());
+                    use slint::Model as _;
+                    let rows = w.get_clips();
+                    let mut list: Vec<ClipRow> = rows.iter().collect();
+                    push_recent(&mut list, row);
+                    w.set_clips(slint::ModelRc::new(slint::VecModel::from(list)));
                 });
             }
             Err(e) => self.alerts.save_failed(e, sound),
@@ -121,7 +130,7 @@ pub struct Controller {
     output_dir: Mutex<PathBuf>,
     saving: Arc<AtomicBool>,
     last_save: Arc<Mutex<Option<String>>>,
-    last_clip: Arc<Mutex<Option<PathBuf>>>,
+    clips: Arc<Mutex<Vec<PathBuf>>>,
     alerts: Arc<Alerts>,
     save_sound: Arc<AtomicBool>,
     /// A game just picked in the window picker: kept if it starts recording, removed again
@@ -160,7 +169,7 @@ impl Controller {
             output_dir: Mutex::new(output_dir),
             saving: Arc::new(AtomicBool::new(false)),
             last_save: Arc::new(Mutex::new(None)),
-            last_clip: Arc::new(Mutex::new(None)),
+            clips: Arc::new(Mutex::new(Vec::new())),
             alerts,
             save_sound: Arc::new(AtomicBool::new(true)),
             trial: Arc::new(Mutex::new(None)),
@@ -241,7 +250,7 @@ impl Controller {
         SaveFeedback {
             window: self.window.clone(),
             last_save: Arc::clone(&self.last_save),
-            last_clip: Arc::clone(&self.last_clip),
+            clips: Arc::clone(&self.clips),
             alerts: Arc::clone(&self.alerts),
             sound: Arc::clone(&self.save_sound),
         }
@@ -262,26 +271,25 @@ impl Controller {
         }
     }
 
-    /// Open the last saved clip in the default player.
-    pub fn play_last_clip(&self) {
-        if let Some(path) = self
-            .last_clip
+    /// Clip `index` of this session's list (0 = newest).
+    fn clip(&self, index: usize) -> Option<PathBuf> {
+        self.clips
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .clone()
-        {
+            .get(index)
+            .cloned()
+    }
+
+    /// Open clip `index` of this session in the default player.
+    pub fn play_clip(&self, index: usize) {
+        if let Some(path) = self.clip(index) {
             crate::notify::open(&path);
         }
     }
 
-    /// Show the last saved clip in the file manager.
-    pub fn show_last_clip(&self) {
-        if let Some(path) = self
-            .last_clip
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
-        {
+    /// Show clip `index` of this session in the file manager.
+    pub fn show_clip(&self, index: usize) {
+        if let Some(path) = self.clip(index) {
             crate::notify::show_in_folder(&path);
         }
     }
@@ -647,6 +655,15 @@ impl Suggest {
     }
 }
 
+/// How many of this session's clips Home lists.
+const RECENT_CLIPS: usize = 10;
+
+/// Put `item` first in `list` and keep the newest [`RECENT_CLIPS`].
+fn push_recent<T>(list: &mut Vec<T>, item: T) {
+    list.insert(0, item);
+    list.truncate(RECENT_CLIPS);
+}
+
 /// Resolve a trial (see [`Controller::try_game`]): recording the game ends it; a failure
 /// first tells the window, which removes the game again.
 fn check_trial(
@@ -796,6 +813,15 @@ fn status_text(status: &RecorderStatus, waiting_for: &str) -> (String, bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recent_clips_are_newest_first_and_at_most_ten() {
+        let mut list = Vec::new();
+        for n in 1..=12 {
+            push_recent(&mut list, n);
+        }
+        assert_eq!(list, [12, 11, 10, 9, 8, 7, 6, 5, 4, 3]);
+    }
 
     #[test]
     fn waiting_text_lists_the_games() {

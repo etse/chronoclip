@@ -27,7 +27,9 @@ use crate::controller::Controller;
 mod generated {
     slint::include_modules!();
 }
-pub use generated::{GameRow, MainWindow, RecState, ResizeEdge, Tray, TrayState, WindowRow};
+pub use generated::{
+    ClipRow, GameRow, MainWindow, RecState, ResizeEdge, Tray, TrayState, WindowRow,
+};
 
 fn encoder_label(encoder: EncoderPreference) -> &'static str {
     match encoder {
@@ -485,11 +487,19 @@ pub fn init(window: &MainWindow, paths: Paths, settings: &Settings, controller: 
         save_controller.save_replay();
     });
 
-    window.on_play_last_clip({
+    window.on_play_clip({
         let controller = Arc::clone(&clip_controller);
-        move || controller.play_last_clip()
+        move |index| {
+            if let Ok(index) = usize::try_from(index) {
+                controller.play_clip(index);
+            }
+        }
     });
-    window.on_show_last_clip(move || clip_controller.show_last_clip());
+    window.on_show_clip(move |index| {
+        if let Ok(index) = usize::try_from(index) {
+            clip_controller.show_clip(index);
+        }
+    });
 
     window.on_open_url(|url| crate::notify::open_url(&url));
 
