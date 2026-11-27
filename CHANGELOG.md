@@ -20,6 +20,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 - **"Record this game?"** Chronoclip notices a window that looks like a game but isn't in any list
   and asks (on Home and in a notification): *Record* or *Not this one*.
 - **A folder per game** for clips: `~/Videos/Chronoclip/ELDEN RING/ELDEN RING_2026-11-27_21-04-33.mp4`.
+- **Clips this session** on Home: the last 10 clips you saved, newest first, each with *Play* and
+  *Show in folder*. Only the list scrolls; the status and Save replay stay in view.
 - **Search** on the Games tab and in *Choose window*: type part of a name, program or Steam id.
 - Games get their proper name from Steam, Heroic, Lutris or Faugus Launcher (e.g. "ELDEN RING"),
   else the window title.

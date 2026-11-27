@@ -7,7 +7,7 @@ Chronoclip continuously records your gameplay to a rolling buffer on disk. When 
 > **Status:** 🚧 Pre-alpha. Recording and saving replays with sound work on X11 with an NVIDIA GPU. See [Roadmap](#roadmap).
 
 <p align="center">
-  <img src="docs/images/chronoclip-window.png" alt="Chronoclip's Home page: a dark window with Home, Games, Settings and About tabs in the title bar, a RECORDING badge for World of Warcraft at 1920×1080 and 60 fps with game sound and a Choose window button, a replay buffer bar at 0:16 of 10:00, a large blue Save replay button showing Ctrl+F9, and the last saved clip with Play and Show in folder buttons" width="440">
+  <img src="docs/images/chronoclip-window.png" alt="Chronoclip's Home page: a dark window with Home, Games, Settings and About tabs in the title bar, a RECORDING badge for World of Warcraft at 1920×1080 and 60 fps with game sound and a Choose window button, a replay buffer bar at 0:16 of 10:00, a large blue Save replay button showing Ctrl+F9, and the clips saved this session with Play and Show in folder buttons" width="440">
   <img src="docs/images/chronoclip-settings.png" alt="Chronoclip's Settings page: cards for Recording (replay length slider at 10 min, frame rate 30/60/120/144, encoder dropdown) and Sound (Game only, All sound or Off, microphone toggle)" width="440">
 </p>
 
@@ -59,7 +59,7 @@ Works today (X11 + NVIDIA):
 - **Asks about unknown games**: a window that looks like a game but is in no list gets *"Record this game?"* (on Home and in a notification), with *Record* or *Not this one*.
 - **Games tab**: your games, the ones installed on this computer, the ones you switched off and the built-in list, with search; **Choose window** picks any window.
 - **A folder per game**: `~/Videos/Chronoclip/ELDEN RING/ELDEN RING_2026-11-27_21-04-33.mp4`.
-- **Modern dark window** in the style of the Battle.net launcher and Discord: big status, the replay buffer filling up, a big **Save replay** button with your hotkey, the last clip with **Play** / **Show in folder**, settings in cards, a hotkey recorder (click and press your keys).
+- **Modern dark window** in the style of the Battle.net launcher and Discord: big status, the replay buffer filling up, a big **Save replay** button with your hotkey, the clips you saved this session (the last 10, each with **Play** / **Show in folder**), settings in cards, a hotkey recorder (click and press your keys).
 - **Fully native and lightweight**: Rust all the way down, native UI with [Slint](https://slint.dev). No Electron, no webview.
 - **Tray app** that keeps recording when the window is closed. The icon shows the state: red while recording, grey while waiting for a game, amber on errors.
 - **You hear when a clip is saved**: a short chime (a different tone if saving failed), also while playing, plus a desktop notification with **Play** and **Show in folder**.
